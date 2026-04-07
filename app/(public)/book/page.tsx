@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { vehicles, type VehicleCategory } from "@/lib/mock-data";
+import { type VehicleCategory } from "@/lib/mock-data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EuropeanDateInput } from "@/components/ui/european-date-input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Car,
-  Calendar,
   MapPin,
   Fuel,
   Users,
@@ -23,18 +23,28 @@ import {
   Wifi,
   Baby,
 } from "lucide-react";
-import Image from "next/image";
 import { useI18n } from "@/lib/i18n";
+import { useVehicles } from "@/lib/use-vehicles";
+import {
+  formatDate,
+  formatDateRange,
+  isoDateToEuropeanInput,
+  normalizeEuropeanDateInput,
+  parseEuropeanDate,
+} from "@/lib/date-format";
+import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 
 type Step = "search" | "select" | "details" | "confirm";
 
 export default function BookingPage() {
   const { t } = useI18n();
+  const { vehicles } = useVehicles();
   const [step, setStep] = useState<Step>("search");
 
   // Search state
   const [pickupDate, setPickupDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
+  const [dateInputs, setDateInputs] = useState({ pickupDate: "", returnDate: "" });
   const [location, setLocation] = useState("all");
   const [category, setCategory] = useState<VehicleCategory | "all">("all");
 
@@ -52,6 +62,7 @@ export default function BookingPage() {
 
   // Extras
   const [extras, setExtras] = useState<string[]>([]);
+  const [bookingRef, setBookingRef] = useState("");
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
 
@@ -82,6 +93,99 @@ export default function BookingPage() {
     { key: "confirm", label: t("public.steps.confirm") },
   ];
   const currentStepIndex = stepList.findIndex((s) => s.key === step);
+
+  function setEuropeanDateInput(key: keyof typeof dateInputs, value: string) {
+    const nextValue = normalizeEuropeanDateInput(value);
+    const parsedDate = parseEuropeanDate(nextValue);
+
+    setDateInputs((current) => ({ ...current, [key]: nextValue }));
+
+    if (key === "pickupDate") {
+      setPickupDate(parsedDate);
+      return;
+    }
+
+    setReturnDate(parsedDate);
+  }
+
+  function setIsoDateInput(key: keyof typeof dateInputs, value: string) {
+    setDateInputs((current) => ({ ...current, [key]: isoDateToEuropeanInput(value) }));
+
+    if (key === "pickupDate") {
+      setPickupDate(value);
+      return;
+    }
+
+    setReturnDate(value);
+  }
+
+  function getCategoryLabel(value: string) {
+    const labels: Record<string, string> = {
+      compact: t("fleet.compact"),
+      sedan: t("fleet.sedan"),
+      suv: t("fleet.suv"),
+      van: t("fleet.van"),
+      luxury: t("fleet.luxury"),
+    };
+    return labels[value] ?? value;
+  }
+
+  function getFuelLabel(value: string) {
+    const labels: Record<string, string> = {
+      Gasoline: t("vehicleForm.fuel.gasoline"),
+      Diesel: t("vehicleForm.fuel.diesel"),
+      Hybrid: t("vehicleForm.fuel.hybrid"),
+      Electric: t("vehicleForm.fuel.electric"),
+      LPG: t("vehicleForm.fuel.lpg"),
+    };
+    return labels[value] ?? value;
+  }
+
+  function getTransmissionLabel(value: string) {
+    const labels: Record<string, string> = {
+      Automatic: t("vehicleForm.transmission.automatic"),
+      Manual: t("vehicleForm.transmission.manual"),
+      CVT: t("vehicleForm.transmission.cvt"),
+      "Semi-Auto": t("vehicleForm.transmission.semiAuto"),
+    };
+    return labels[value] ?? value;
+  }
+
+  function getLocationLabel(value: string) {
+    const labels: Record<string, string> = {
+      Airport: t("public.airport"),
+      Downtown: t("public.downtown"),
+      Workshop: t("vehicleForm.location.workshop"),
+      Storage: t("vehicleForm.location.storage"),
+    };
+    return labels[value] ?? value;
+  }
+
+  function getColorLabel(value: string) {
+    const labels: Record<string, string> = {
+      White: t("vehicleForm.color.white"),
+      Black: t("vehicleForm.color.black"),
+      Silver: t("vehicleForm.color.silver"),
+      Gray: t("vehicleForm.color.gray"),
+      Blue: t("vehicleForm.color.blue"),
+      Red: t("vehicleForm.color.red"),
+      Green: t("vehicleForm.color.green"),
+      Yellow: t("vehicleForm.color.yellow"),
+      Orange: t("vehicleForm.color.orange"),
+      Brown: t("vehicleForm.color.brown"),
+      Beige: t("vehicleForm.color.beige"),
+      Gold: t("vehicleForm.color.gold"),
+      Purple: t("vehicleForm.color.purple"),
+      Other: t("vehicleForm.color.other"),
+    };
+    return labels[value] ?? value;
+  }
+
+  const extraLabels: Record<string, string> = {
+    GPS: t("booking.gps"),
+    "Wi-Fi": t("booking.wifi"),
+    "Child Seat": t("booking.childSeat"),
+  };
 
   const toggleExtra = (extra: string) => {
     setExtras((prev) =>
@@ -143,20 +247,22 @@ export default function BookingPage() {
                     <label className="mb-1 block text-xs font-medium text-muted-foreground">
                       {t("public.pickupDate")}
                     </label>
-                    <Input
-                      type="date"
-                      value={pickupDate}
-                      onChange={(e) => setPickupDate(e.target.value)}
+                    <EuropeanDateInput
+                      displayValue={dateInputs.pickupDate}
+                      isoValue={pickupDate}
+                      onDisplayChange={(value) => setEuropeanDateInput("pickupDate", value)}
+                      onIsoChange={(value) => setIsoDateInput("pickupDate", value)}
                     />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-muted-foreground">
                       {t("public.returnDate")}
                     </label>
-                    <Input
-                      type="date"
-                      value={returnDate}
-                      onChange={(e) => setReturnDate(e.target.value)}
+                    <EuropeanDateInput
+                      displayValue={dateInputs.returnDate}
+                      isoValue={returnDate}
+                      onDisplayChange={(value) => setEuropeanDateInput("returnDate", value)}
+                      onIsoChange={(value) => setIsoDateInput("returnDate", value)}
                     />
                   </div>
                   <div>
@@ -227,7 +333,7 @@ export default function BookingPage() {
           <div>
             <h2 className="mb-1 text-xl font-bold">{t("public.availableVehicles")}</h2>
             <p className="mb-6 text-sm text-muted-foreground">
-              {pickupDate} &rarr; {returnDate} &middot; {dayCount} {dayCount === 1 ? t("common.day") : t("common.days")}
+              {formatDateRange(pickupDate, returnDate)} &middot; {dayCount} {dayCount === 1 ? t("common.day") : t("common.days")}
             </p>
 
             {availableVehicles.length === 0 ? (
@@ -248,12 +354,10 @@ export default function BookingPage() {
                   >
                     <div className="flex flex-col sm:flex-row">
                       <div className="relative h-48 sm:h-auto sm:w-64 bg-muted shrink-0">
-                        <Image
-                          src={v.image}
+                        <VehiclePhoto
+                          image={v.image}
+                          images={v.images}
                           alt={`${v.make} ${v.model}`}
-                          fill
-                          className="object-cover"
-                          unoptimized
                         />
                       </div>
                       <CardContent className="flex flex-1 items-center justify-between p-5">
@@ -263,24 +367,24 @@ export default function BookingPage() {
                               {v.make} {v.model}
                             </h3>
                             <Badge variant="outline" className="capitalize text-xs">
-                              {v.category}
+                              {getCategoryLabel(v.category)}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground mt-0.5">
-                            {v.year} &middot; {v.color}
+                            {v.year} &middot; {getColorLabel(v.color)}
                           </p>
                           <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
-                              <Fuel className="h-3.5 w-3.5" /> {v.fuelType}
+                              <Fuel className="h-3.5 w-3.5" /> {getFuelLabel(v.fuelType)}
                             </span>
                             <span className="flex items-center gap-1">
-                              <Settings className="h-3.5 w-3.5" /> {v.transmission}
+                              <Settings className="h-3.5 w-3.5" /> {getTransmissionLabel(v.transmission)}
                             </span>
                             <span className="flex items-center gap-1">
                               <Users className="h-3.5 w-3.5" /> {v.seats} {t("fleet.seats").toLowerCase()}
                             </span>
                             <span className="flex items-center gap-1">
-                              <MapPin className="h-3.5 w-3.5" /> {v.location}
+                              <MapPin className="h-3.5 w-3.5" /> {getLocationLabel(v.location)}
                             </span>
                           </div>
                         </div>
@@ -425,12 +529,10 @@ export default function BookingPage() {
                   <h3 className="font-semibold mb-3">{t("public.bookingSummary")}</h3>
                   {selectedVehicle && (
                     <div className="relative mb-4 h-36 overflow-hidden rounded-lg bg-muted">
-                      <Image
-                        src={selectedVehicle.image}
+                      <VehiclePhoto
+                        image={selectedVehicle.image}
+                        images={selectedVehicle.images}
                         alt={`${selectedVehicle.make} ${selectedVehicle.model}`}
-                        fill
-                        className="object-cover"
-                        unoptimized
                       />
                     </div>
                   )}
@@ -443,11 +545,11 @@ export default function BookingPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("booking.pickup")}</span>
-                      <span className="font-medium">{pickupDate}</span>
+                      <span className="font-medium">{formatDate(pickupDate)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("booking.return")}</span>
-                      <span className="font-medium">{returnDate}</span>
+                      <span className="font-medium">{formatDate(returnDate)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("booking.duration")}</span>
@@ -456,7 +558,9 @@ export default function BookingPage() {
                     {extras.length > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">{t("booking.extras")}</span>
-                        <span className="font-medium">{extras.join(", ")}</span>
+                        <span className="font-medium">
+                          {extras.map((extra) => extraLabels[extra] ?? extra).join(", ")}
+                        </span>
                       </div>
                     )}
                     <Separator />
@@ -467,7 +571,10 @@ export default function BookingPage() {
                   </div>
                   <Button
                     className="mt-4 w-full"
-                    onClick={() => setStep("confirm")}
+                    onClick={() => {
+                      setBookingRef(`CAR-2026-${Math.floor(Math.random() * 9000 + 1000)}`);
+                      setStep("confirm");
+                    }}
                   >
                     {t("public.completeBooking")}
                   </Button>
@@ -497,7 +604,7 @@ export default function BookingPage() {
               <CardContent className="p-6 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("public.bookingRef")}</span>
-                  <span className="font-mono font-bold">CAR-2026-{Math.floor(Math.random() * 9000 + 1000)}</span>
+                  <span className="font-mono font-bold">{bookingRef}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("res.vehicle")}</span>
@@ -513,11 +620,11 @@ export default function BookingPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("booking.pickup")}</span>
-                  <span className="font-medium">{pickupDate}</span>
+                  <span className="font-medium">{formatDate(pickupDate)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("booking.return")}</span>
-                  <span className="font-medium">{returnDate}</span>
+                  <span className="font-medium">{formatDate(returnDate)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between font-bold">

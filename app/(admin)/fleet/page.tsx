@@ -1,17 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { vehicles, type VehicleStatus, type VehicleCategory, vehicleStatusColors } from "@/lib/mock-data";
+import { type VehicleStatus, type VehicleCategory, vehicleStatusColors } from "@/lib/mock-data";
+import { useVehicles } from "@/lib/use-vehicles";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, LayoutGrid, List, MapPin, Gauge, Fuel, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, LayoutGrid, List, MapPin, Gauge, Fuel, Users, Plus } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import { useI18n } from "@/lib/i18n";
+import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 
 export default function FleetPage() {
   const { t } = useI18n();
+  const { vehicles } = useVehicles();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<VehicleStatus | "all">("all");
   const [categoryFilter, setCategoryFilter] = useState<VehicleCategory | "all">("all");
@@ -41,6 +44,47 @@ export default function FleetPage() {
     retired: t("fleet.status.retired"),
   };
 
+  function getFuelLabel(value: string) {
+    const labels: Record<string, string> = {
+      Gasoline: t("vehicleForm.fuel.gasoline"),
+      Diesel: t("vehicleForm.fuel.diesel"),
+      Hybrid: t("vehicleForm.fuel.hybrid"),
+      Electric: t("vehicleForm.fuel.electric"),
+      LPG: t("vehicleForm.fuel.lpg"),
+    };
+    return labels[value] ?? value;
+  }
+
+  function getLocationLabel(value: string) {
+    const labels: Record<string, string> = {
+      Airport: t("public.airport"),
+      Downtown: t("public.downtown"),
+      Workshop: t("vehicleForm.location.workshop"),
+      Storage: t("vehicleForm.location.storage"),
+    };
+    return labels[value] ?? value;
+  }
+
+  function getColorLabel(value: string) {
+    const labels: Record<string, string> = {
+      White: t("vehicleForm.color.white"),
+      Black: t("vehicleForm.color.black"),
+      Silver: t("vehicleForm.color.silver"),
+      Gray: t("vehicleForm.color.gray"),
+      Blue: t("vehicleForm.color.blue"),
+      Red: t("vehicleForm.color.red"),
+      Green: t("vehicleForm.color.green"),
+      Yellow: t("vehicleForm.color.yellow"),
+      Orange: t("vehicleForm.color.orange"),
+      Brown: t("vehicleForm.color.brown"),
+      Beige: t("vehicleForm.color.beige"),
+      Gold: t("vehicleForm.color.gold"),
+      Purple: t("vehicleForm.color.purple"),
+      Other: t("vehicleForm.color.other"),
+    };
+    return labels[value] ?? value;
+  }
+
   const filtered = vehicles.filter((v) => {
     const matchesSearch =
       `${v.make} ${v.model} ${v.plate}`.toLowerCase().includes(search.toLowerCase());
@@ -58,19 +102,27 @@ export default function FleetPage() {
             {vehicles.length} {t("fleet.vehicles")} &middot; {vehicles.filter((v) => v.status === "available").length} {t("fleet.available")}
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border p-1">
-          <button
-            onClick={() => setViewMode("grid")}
-            className={`rounded-md p-2 ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setViewMode("list")}
-            className={`rounded-md p-2 ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-          >
-            <List className="h-4 w-4" />
-          </button>
+        <div className="flex items-center gap-2">
+          <Link href="/fleet/new">
+            <Button size="sm" className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("fleet.addVehicle")}</span>
+            </Button>
+          </Link>
+          <div className="flex items-center gap-2 rounded-lg border p-1">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`rounded-md p-2 ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`rounded-md p-2 ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -124,12 +176,10 @@ export default function FleetPage() {
             <Link key={vehicle.id} href={`/fleet/${vehicle.id}`}>
               <Card className="overflow-hidden transition-shadow hover:shadow-lg cursor-pointer">
                 <div className="relative h-40 bg-muted">
-                  <Image
-                    src={vehicle.image}
+                  <VehiclePhoto
+                    image={vehicle.image}
+                    images={vehicle.images}
                     alt={`${vehicle.make} ${vehicle.model}`}
-                    fill
-                    className="object-cover"
-                    unoptimized
                   />
                   <Badge
                     className={`absolute top-2 right-2 ${vehicleStatusColors[vehicle.status]}`}
@@ -156,7 +206,7 @@ export default function FleetPage() {
                   <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
-                      {vehicle.location}
+                      {getLocationLabel(vehicle.location)}
                     </span>
                     <span className="flex items-center gap-1">
                       <Gauge className="h-3 w-3" />
@@ -178,12 +228,11 @@ export default function FleetPage() {
                 className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
               >
                 <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-md bg-muted">
-                  <Image
-                    src={vehicle.image}
+                  <VehiclePhoto
+                    image={vehicle.image}
+                    images={vehicle.images}
                     alt={`${vehicle.make} ${vehicle.model}`}
-                    fill
-                    className="object-cover"
-                    unoptimized
+                    iconClassName="h-6 w-6"
                   />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -191,13 +240,13 @@ export default function FleetPage() {
                     {vehicle.make} {vehicle.model}
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    {vehicle.year} &middot; {vehicle.plate} &middot; {vehicle.color}
+                    {vehicle.year} &middot; {vehicle.plate} &middot; {getColorLabel(vehicle.color)}
                   </p>
                 </div>
                 <div className="flex items-center gap-6 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <MapPin className="h-3.5 w-3.5" />
-                    {vehicle.location}
+                    {getLocationLabel(vehicle.location)}
                   </span>
                   <span className="flex items-center gap-1">
                     <Gauge className="h-3.5 w-3.5" />
@@ -205,7 +254,7 @@ export default function FleetPage() {
                   </span>
                   <span className="flex items-center gap-1">
                     <Fuel className="h-3.5 w-3.5" />
-                    {vehicle.fuelType}
+                    {getFuelLabel(vehicle.fuelType)}
                   </span>
                   <span className="flex items-center gap-1">
                     <Users className="h-3.5 w-3.5" />
@@ -216,7 +265,7 @@ export default function FleetPage() {
                   {statusLabels[vehicle.status]}
                 </Badge>
                 <p className="font-bold text-primary w-20 text-right">
-                  &euro;{vehicle.dailyRate}/d
+                  &euro;{vehicle.dailyRate}{t("common.perDay")}
                 </p>
               </Link>
             ))}

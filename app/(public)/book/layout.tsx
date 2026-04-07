@@ -5,7 +5,7 @@ import { Car, Globe } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
-  const { locale, setLocale, t } = useI18n();
+  const { locale, setLocale } = useI18n();
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -21,7 +21,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
               className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-gray-50 transition-colors"
             >
               <Globe className="h-3.5 w-3.5" />
-              {locale === "en" ? "SR" : "EN"}
+              {locale === "en" ? "EN" : "SR"}
             </button>
             <Link
               href="/"

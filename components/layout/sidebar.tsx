@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Car, CalendarDays, LayoutDashboard, ChevronLeft, ChevronRight, Globe2 } from "lucide-react";
+import { Car, CalendarDays, LayoutDashboard, ChevronLeft, ChevronRight, Globe2, Library } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
@@ -12,9 +12,15 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { t } = useI18n();
 
-  const navItems = [
-    { href: "/", label: t("nav.dashboard"), icon: LayoutDashboard },
-    { href: "/fleet", label: t("nav.fleet"), icon: Car },
+  const navItems: { href: string; label: string; icon: React.ElementType; exact?: boolean; activeFor?: (p: string) => boolean }[] = [
+    { href: "/", label: t("nav.dashboard"), icon: LayoutDashboard, exact: true },
+    {
+      href: "/fleet",
+      label: t("nav.fleet"),
+      icon: Car,
+      activeFor: (p) => p === "/fleet" || (p.startsWith("/fleet/") && !p.startsWith("/fleet/catalog")),
+    },
+    { href: "/fleet/catalog", label: t("nav.vehicleCatalog"), icon: Library },
     { href: "/reservations", label: t("nav.reservations"), icon: CalendarDays },
     { href: "/book", label: t("nav.bookNow"), icon: Globe2 },
   ];
@@ -51,9 +57,11 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-1 p-2">
         {navItems.map((item) => {
-          const isActive = item.href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(item.href);
+          const isActive = item.activeFor
+            ? item.activeFor(pathname)
+            : item.exact
+              ? pathname === item.href
+              : pathname.startsWith(item.href);
 
           return (
             <Link

@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 export type Locale = "en" | "sr";
 
@@ -16,12 +23,15 @@ const translations = {
     "common.confirm": "Confirm",
     "common.cancel": "Cancel",
     "common.save": "Save",
+    "common.edit": "Edit",
     "common.day": "day",
     "common.days": "days",
     "common.perDay": "/day",
     "common.total": "Total",
     "common.none": "None",
     "common.noResults": "No results found.",
+    "common.clear": "Clear",
+    "common.loading": "Loading...",
     "common.language": "Language",
     "common.english": "English",
     "common.serbian": "Serbian",
@@ -29,6 +39,7 @@ const translations = {
     // Navigation
     "nav.dashboard": "Dashboard",
     "nav.fleet": "Fleet",
+    "nav.vehicleCatalog": "Vehicle Catalog",
     "nav.reservations": "Reservations",
     "nav.bookNow": "Book Now",
 
@@ -43,6 +54,12 @@ const translations = {
     "dashboard.newBooking": "New Booking",
     "dashboard.viewFleet": "View Fleet",
     "dashboard.recentBookings": "Recent Bookings",
+    "dashboard.monthlyRevenue": "Monthly Rental Income",
+    "dashboard.last12Months": "Last 12 months",
+    "dashboard.bestMonth": "Best month",
+    "dashboard.reservations": "Reservations",
+    "dashboard.income": "Income",
+    "dashboard.month": "Month",
 
     // Fleet
     "fleet.title": "Fleet Management",
@@ -74,11 +91,107 @@ const translations = {
     "fleet.location": "Location",
     "fleet.category": "Category",
     "fleet.noVehicles": "No vehicles match your filters.",
+    "fleet.addVehicle": "Add vehicle",
+    "fleet.notFound": "Vehicle not found.",
+
+    // Vehicle catalog
+    "catalog.title": "Vehicle Catalog",
+    "catalog.customEntries": "Custom entries",
+    "catalog.addCustomModel": "Add custom model",
+    "catalog.addCustomModelDesc": "Add a make/model not in the built-in dataset (e.g. a newer trim, local brand, or EV). It will appear in autocomplete when adding vehicles.",
+    "catalog.make": "Make",
+    "catalog.model": "model",
+    "catalog.models": "models",
+    "catalog.modelLabel": "Model",
+    "catalog.fromYear": "From year",
+    "catalog.toYear": "To year",
+    "catalog.selectOrTypeMake": "Select or type make",
+    "catalog.searchOrAddNew": "Search or add new...",
+    "catalog.modelPlaceholder": "e.g. Model Y, EV6, Ioniq 6",
+    "catalog.from": "From",
+    "catalog.to": "To",
+    "catalog.typeYear": "Type year...",
+    "catalog.addToCatalog": "Add to catalog",
+    "catalog.noCustomEntries": "No custom entries yet",
+    "catalog.noCustomEntriesDesc": "Add a model above to extend the built-in catalog",
+    "catalog.makeRequired": "Make is required",
+    "catalog.modelRequired": "Model name is required",
+    "catalog.invalidYear": "Invalid year",
+    "catalog.fromMustBeBeforeTo": "'From' must be ≤ 'To'",
+    "catalog.addedSuccessfully": "added successfully",
+    "catalog.remove": "Remove",
+
+    // Add vehicle
+    "vehicleForm.title": "Add vehicle",
+    "vehicleForm.subtitle": "Fill in the details to add a car to your fleet",
+    "vehicleForm.vehicle": "Vehicle",
+    "vehicleForm.type": "Type",
+    "vehicleForm.specs": "Specs",
+    "vehicleForm.fleetDetails": "Fleet details",
+    "vehicleForm.photos": "Photos",
+    "vehicleForm.trimVariant": "Trim / Variant",
+    "vehicleForm.year": "Year",
+    "vehicleForm.fuelType": "Fuel type",
+    "vehicleForm.luggage": "Luggage (bags)",
+    "vehicleForm.color": "Color",
+    "vehicleForm.licensePlate": "License plate",
+    "vehicleForm.dailyRate": "Daily rate (€)",
+    "vehicleForm.currentMileage": "Current mileage (km)",
+    "vehicleForm.status": "Status",
+    "vehicleForm.selectMake": "Select make",
+    "vehicleForm.searchMakes": "Search makes...",
+    "vehicleForm.selectModel": "Select model",
+    "vehicleForm.chooseMakeFirst": "Choose make first",
+    "vehicleForm.searchModels": "Search models...",
+    "vehicleForm.selectYear": "Select year",
+    "vehicleForm.trimPlaceholder": "e.g. SE, Sport, 1.6 TDI",
+    "vehicleForm.selectColor": "Select or type a color",
+    "vehicleForm.searchColor": "e.g. Burgundy, Navy...",
+    "vehicleForm.selectLocation": "Select or type location",
+    "vehicleForm.searchLocation": "e.g. North depot...",
+    "vehicleForm.photosDesc": "First photo is used as the main listing image. Stored locally for now — swap to cloud storage (Vercel Blob / S3) in production.",
+    "vehicleForm.tapToAddPhotos": "Tap to add photos",
+    "vehicleForm.main": "Main",
+    "vehicleForm.required": "Required",
+    "vehicleForm.mustBePositive": "Must be > 0",
+    "vehicleForm.saving": "Saving...",
+    "vehicleForm.addToFleet": "Add to fleet",
+    "vehicleForm.editTitle": "Edit vehicle",
+    "vehicleForm.saveChanges": "Save changes",
+    "vehicleForm.fuel.gasoline": "Gasoline",
+    "vehicleForm.fuel.diesel": "Diesel",
+    "vehicleForm.fuel.hybrid": "Hybrid",
+    "vehicleForm.fuel.electric": "Electric",
+    "vehicleForm.fuel.lpg": "LPG",
+    "vehicleForm.transmission.automatic": "Automatic",
+    "vehicleForm.transmission.manual": "Manual",
+    "vehicleForm.transmission.cvt": "CVT",
+    "vehicleForm.transmission.semiAuto": "Semi-Auto",
+    "vehicleForm.location.workshop": "Workshop",
+    "vehicleForm.location.storage": "Storage",
+    "vehicleForm.color.white": "White",
+    "vehicleForm.color.black": "Black",
+    "vehicleForm.color.silver": "Silver",
+    "vehicleForm.color.gray": "Gray",
+    "vehicleForm.color.blue": "Blue",
+    "vehicleForm.color.red": "Red",
+    "vehicleForm.color.green": "Green",
+    "vehicleForm.color.yellow": "Yellow",
+    "vehicleForm.color.orange": "Orange",
+    "vehicleForm.color.brown": "Brown",
+    "vehicleForm.color.beige": "Beige",
+    "vehicleForm.color.gold": "Gold",
+    "vehicleForm.color.purple": "Purple",
+    "vehicleForm.color.other": "Other",
 
     // Reservations
     "res.title": "Reservations",
     "res.total": "total",
     "res.active": "active",
+    "res.search": "Search",
+    "res.status": "Status",
+    "res.dateFrom": "Date from",
+    "res.dateTo": "Date to",
     "res.searchPlaceholder": "Search bookings...",
     "res.newBooking": "New Booking",
     "res.bookingDetails": "Booking Details",
@@ -90,6 +203,8 @@ const translations = {
     "res.dailyRate": "Daily Rate",
     "res.notes": "Notes",
     "res.created": "Created",
+    "res.cancelReservation": "Cancel reservation",
+    "res.cancelling": "Cancelling...",
     "res.selectBooking": "Select a booking to view details, or create a new one.",
     "res.noBookings": "No bookings found.",
     "res.status.pending": "Pending",
@@ -105,7 +220,9 @@ const translations = {
     "booking.extras": "Extras",
     "booking.summary": "Summary",
     "booking.pickupDate": "Pick-up Date",
+    "booking.pickupTime": "Pick-up Time",
     "booking.returnDate": "Return Date",
+    "booking.returnTime": "Return Time",
     "booking.pickupLocation": "Pick-up Location",
     "booking.returnLocation": "Return Location",
     "booking.duration": "Duration",
@@ -116,6 +233,29 @@ const translations = {
     "booking.wifi": "Wi-Fi",
     "booking.childSeat": "Child Seat",
     "booking.verified": "Verified",
+    "booking.existingCustomer": "Existing customer",
+    "booking.newCustomer": "New customer",
+    "booking.licenseExpiry": "License expiry",
+    "booking.address": "Address",
+    "booking.returnBeforePickup": "Return date and time must be after pickup date and time.",
+    "booking.minimumDuration": "Reservations must be at least 24 hours.",
+    "booking.pickupInPast": "Pickup date and time cannot be in the past.",
+    "booking.customerNameRequired": "Customer first and last name are required.",
+    "booking.validEmailRequired": "Enter a valid customer email.",
+    "booking.validPhoneRequired": "Enter a valid customer phone number.",
+    "booking.licenseRequired": "Customer license number is required.",
+    "booking.licenseExpiryRequired": "Customer license expiry is required.",
+    "booking.licenseMustCoverReturn": "Customer license must be valid through the return date.",
+    "booking.duplicateCustomer": "A customer with this email or license number already exists.",
+    "booking.vehicleUnavailableForPeriod": "Already reserved or in cleanup buffer for this period.",
+    "booking.downloadContract": "Download contract PDF",
+    "booking.contractLanguage": "Contract language",
+    "booking.downloadContractSr": "Serbian PDF",
+    "booking.downloadContractEn": "English PDF",
+    "booking.customerPhotos": "Customer photos",
+    "booking.reservationPhotos": "Reservation photos",
+    "booking.addPhotos": "Add photos",
+    "booking.noPhotos": "No photos attached.",
 
     // Public booking
     "public.hero": "Find Your Perfect Ride",
@@ -167,12 +307,15 @@ const translations = {
     "common.confirm": "Potvrdi",
     "common.cancel": "Otkaži",
     "common.save": "Sačuvaj",
+    "common.edit": "Uredi",
     "common.day": "dan",
     "common.days": "dana",
     "common.perDay": "/dan",
     "common.total": "Ukupno",
     "common.none": "Nema",
     "common.noResults": "Nema rezultata.",
+    "common.clear": "Obriši",
+    "common.loading": "Učitavanje...",
     "common.language": "Jezik",
     "common.english": "Engleski",
     "common.serbian": "Srpski",
@@ -180,6 +323,7 @@ const translations = {
     // Navigation
     "nav.dashboard": "Kontrolna tabla",
     "nav.fleet": "Vozni park",
+    "nav.vehicleCatalog": "Katalog vozila",
     "nav.reservations": "Rezervacije",
     "nav.bookNow": "Rezerviši",
 
@@ -194,6 +338,12 @@ const translations = {
     "dashboard.newBooking": "Nova rezervacija",
     "dashboard.viewFleet": "Vozni park",
     "dashboard.recentBookings": "Poslednje rezervacije",
+    "dashboard.monthlyRevenue": "Mesečni prihod od najma",
+    "dashboard.last12Months": "Poslednjih 12 meseci",
+    "dashboard.bestMonth": "Najbolji mesec",
+    "dashboard.reservations": "Rezervacije",
+    "dashboard.income": "Prihod",
+    "dashboard.month": "Mesec",
 
     // Fleet
     "fleet.title": "Upravljanje voznim parkom",
@@ -225,11 +375,107 @@ const translations = {
     "fleet.location": "Lokacija",
     "fleet.category": "Kategorija",
     "fleet.noVehicles": "Nema vozila koja odgovaraju filterima.",
+    "fleet.addVehicle": "Dodaj vozilo",
+    "fleet.notFound": "Vozilo nije pronađeno.",
+
+    // Vehicle catalog
+    "catalog.title": "Katalog vozila",
+    "catalog.customEntries": "Prilagođeni unosi",
+    "catalog.addCustomModel": "Dodaj prilagođeni model",
+    "catalog.addCustomModelDesc": "Dodajte marku/model koji nije u ugrađenoj bazi (npr. noviji paket opreme, lokalni brend ili EV). Pojaviće se u automatskoj dopuni pri dodavanju vozila.",
+    "catalog.make": "Marka",
+    "catalog.model": "model",
+    "catalog.models": "modela",
+    "catalog.modelLabel": "Model",
+    "catalog.fromYear": "Od godine",
+    "catalog.toYear": "Do godine",
+    "catalog.selectOrTypeMake": "Izaberite ili unesite marku",
+    "catalog.searchOrAddNew": "Pretražite ili dodajte novo...",
+    "catalog.modelPlaceholder": "npr. Model Y, EV6, Ioniq 6",
+    "catalog.from": "Od",
+    "catalog.to": "Do",
+    "catalog.typeYear": "Unesite godinu...",
+    "catalog.addToCatalog": "Dodaj u katalog",
+    "catalog.noCustomEntries": "Još nema prilagođenih unosa",
+    "catalog.noCustomEntriesDesc": "Dodajte model iznad da proširite ugrađeni katalog",
+    "catalog.makeRequired": "Marka je obavezna",
+    "catalog.modelRequired": "Naziv modela je obavezan",
+    "catalog.invalidYear": "Neispravna godina",
+    "catalog.fromMustBeBeforeTo": "'Od' mora biti ≤ 'Do'",
+    "catalog.addedSuccessfully": "je uspešno dodat",
+    "catalog.remove": "Ukloni",
+
+    // Add vehicle
+    "vehicleForm.title": "Dodaj vozilo",
+    "vehicleForm.subtitle": "Popunite detalje za dodavanje automobila u vozni park",
+    "vehicleForm.vehicle": "Vozilo",
+    "vehicleForm.type": "Tip",
+    "vehicleForm.specs": "Specifikacije",
+    "vehicleForm.fleetDetails": "Detalji voznog parka",
+    "vehicleForm.photos": "Fotografije",
+    "vehicleForm.trimVariant": "Paket opreme / varijanta",
+    "vehicleForm.year": "Godina",
+    "vehicleForm.fuelType": "Tip goriva",
+    "vehicleForm.luggage": "Prtljag (torbe)",
+    "vehicleForm.color": "Boja",
+    "vehicleForm.licensePlate": "Registarske tablice",
+    "vehicleForm.dailyRate": "Dnevna cena (€)",
+    "vehicleForm.currentMileage": "Trenutna kilometraža (km)",
+    "vehicleForm.status": "Status",
+    "vehicleForm.selectMake": "Izaberite marku",
+    "vehicleForm.searchMakes": "Pretražite marke...",
+    "vehicleForm.selectModel": "Izaberite model",
+    "vehicleForm.chooseMakeFirst": "Prvo izaberite marku",
+    "vehicleForm.searchModels": "Pretražite modele...",
+    "vehicleForm.selectYear": "Izaberite godinu",
+    "vehicleForm.trimPlaceholder": "npr. SE, Sport, 1.6 TDI",
+    "vehicleForm.selectColor": "Izaberite ili unesite boju",
+    "vehicleForm.searchColor": "npr. bordo, teget...",
+    "vehicleForm.selectLocation": "Izaberite ili unesite lokaciju",
+    "vehicleForm.searchLocation": "npr. severni depo...",
+    "vehicleForm.photosDesc": "Prva fotografija se koristi kao glavna slika u listi. Trenutno se čuva lokalno — zameniti cloud skladištem (Vercel Blob / S3) u produkciji.",
+    "vehicleForm.tapToAddPhotos": "Dodirnite za dodavanje fotografija",
+    "vehicleForm.main": "Glavna",
+    "vehicleForm.required": "Obavezno",
+    "vehicleForm.mustBePositive": "Mora biti > 0",
+    "vehicleForm.saving": "Čuvanje...",
+    "vehicleForm.addToFleet": "Dodaj u vozni park",
+    "vehicleForm.editTitle": "Uredi vozilo",
+    "vehicleForm.saveChanges": "Sačuvaj izmene",
+    "vehicleForm.fuel.gasoline": "Benzin",
+    "vehicleForm.fuel.diesel": "Dizel",
+    "vehicleForm.fuel.hybrid": "Hibrid",
+    "vehicleForm.fuel.electric": "Električni",
+    "vehicleForm.fuel.lpg": "TNG",
+    "vehicleForm.transmission.automatic": "Automatski",
+    "vehicleForm.transmission.manual": "Manuelni",
+    "vehicleForm.transmission.cvt": "CVT",
+    "vehicleForm.transmission.semiAuto": "Poluautomatski",
+    "vehicleForm.location.workshop": "Radionica",
+    "vehicleForm.location.storage": "Skladište",
+    "vehicleForm.color.white": "Bela",
+    "vehicleForm.color.black": "Crna",
+    "vehicleForm.color.silver": "Srebrna",
+    "vehicleForm.color.gray": "Siva",
+    "vehicleForm.color.blue": "Plava",
+    "vehicleForm.color.red": "Crvena",
+    "vehicleForm.color.green": "Zelena",
+    "vehicleForm.color.yellow": "Žuta",
+    "vehicleForm.color.orange": "Narandžasta",
+    "vehicleForm.color.brown": "Braon",
+    "vehicleForm.color.beige": "Bež",
+    "vehicleForm.color.gold": "Zlatna",
+    "vehicleForm.color.purple": "Ljubičasta",
+    "vehicleForm.color.other": "Drugo",
 
     // Reservations
     "res.title": "Rezervacije",
     "res.total": "ukupno",
     "res.active": "aktivno",
+    "res.search": "Pretraga",
+    "res.status": "Status",
+    "res.dateFrom": "Datum od",
+    "res.dateTo": "Datum do",
     "res.searchPlaceholder": "Pretraži rezervacije...",
     "res.newBooking": "Nova rezervacija",
     "res.bookingDetails": "Detalji rezervacije",
@@ -241,6 +487,8 @@ const translations = {
     "res.dailyRate": "Dnevna cena",
     "res.notes": "Napomene",
     "res.created": "Kreirano",
+    "res.cancelReservation": "Otkaži rezervaciju",
+    "res.cancelling": "Otkazivanje...",
     "res.selectBooking": "Izaberite rezervaciju za prikaz detalja ili kreirajte novu.",
     "res.noBookings": "Nema pronađenih rezervacija.",
     "res.status.pending": "Na čekanju",
@@ -256,7 +504,9 @@ const translations = {
     "booking.extras": "Dodaci",
     "booking.summary": "Pregled",
     "booking.pickupDate": "Datum preuzimanja",
+    "booking.pickupTime": "Vreme preuzimanja",
     "booking.returnDate": "Datum vraćanja",
+    "booking.returnTime": "Vreme vraćanja",
     "booking.pickupLocation": "Mesto preuzimanja",
     "booking.returnLocation": "Mesto vraćanja",
     "booking.duration": "Trajanje",
@@ -267,6 +517,29 @@ const translations = {
     "booking.wifi": "Wi-Fi",
     "booking.childSeat": "Dečje sedište",
     "booking.verified": "Verifikovan",
+    "booking.existingCustomer": "Postojeći klijent",
+    "booking.newCustomer": "Novi klijent",
+    "booking.licenseExpiry": "Važenje dozvole",
+    "booking.address": "Adresa",
+    "booking.returnBeforePickup": "Datum i vreme vraćanja moraju biti posle datuma i vremena preuzimanja.",
+    "booking.minimumDuration": "Rezervacija mora trajati najmanje 24 sata.",
+    "booking.pickupInPast": "Datum i vreme preuzimanja ne mogu biti u prošlosti.",
+    "booking.customerNameRequired": "Ime i prezime klijenta su obavezni.",
+    "booking.validEmailRequired": "Unesite ispravan email klijenta.",
+    "booking.validPhoneRequired": "Unesite ispravan broj telefona klijenta.",
+    "booking.licenseRequired": "Broj vozačke dozvole je obavezan.",
+    "booking.licenseExpiryRequired": "Datum važenja dozvole je obavezan.",
+    "booking.licenseMustCoverReturn": "Vozačka dozvola mora važiti do datuma vraćanja.",
+    "booking.duplicateCustomer": "Klijent sa ovim emailom ili brojem dozvole već postoji.",
+    "booking.vehicleUnavailableForPeriod": "Vozilo je već rezervisano ili u periodu čišćenja za ovaj period.",
+    "booking.downloadContract": "Preuzmi PDF ugovor",
+    "booking.contractLanguage": "Jezik ugovora",
+    "booking.downloadContractSr": "Srpski PDF",
+    "booking.downloadContractEn": "Engleski PDF",
+    "booking.customerPhotos": "Fotografije klijenta",
+    "booking.reservationPhotos": "Fotografije rezervacije",
+    "booking.addPhotos": "Dodaj fotografije",
+    "booking.noPhotos": "Nema priloženih fotografija.",
 
     // Public booking
     "public.hero": "Pronađite savršeno vozilo",
@@ -311,6 +584,38 @@ const translations = {
 
 type TranslationKey = keyof typeof translations.en;
 
+const LOCALE_STORAGE_KEY = "carent.locale";
+const LOCALE_CHANGE_EVENT = "carent-locale-change";
+
+let memoryLocale: Locale = "en";
+
+function isLocale(value: string | null): value is Locale {
+  return value === "en" || value === "sr";
+}
+
+function getLocaleSnapshot(): Locale {
+  if (typeof window === "undefined") return memoryLocale;
+
+  try {
+    const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    return isLocale(storedLocale) ? storedLocale : memoryLocale;
+  } catch {
+    return memoryLocale;
+  }
+}
+
+function subscribeToLocaleChange(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(LOCALE_CHANGE_EVENT, onStoreChange);
+
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(LOCALE_CHANGE_EVENT, onStoreChange);
+  };
+}
+
 interface I18nContextType {
   locale: Locale;
   setLocale: (locale: Locale) => void;
@@ -320,7 +625,28 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>("en");
+  const locale = useSyncExternalStore<Locale>(
+    subscribeToLocaleChange,
+    getLocaleSnapshot,
+    () => "en"
+  );
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  const setLocale = useCallback((nextLocale: Locale) => {
+    memoryLocale = nextLocale;
+    document.documentElement.lang = nextLocale;
+
+    try {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale);
+    } catch {
+      // Locale switching should still work when storage is unavailable.
+    }
+
+    window.dispatchEvent(new Event(LOCALE_CHANGE_EVENT));
+  }, []);
 
   const t = useCallback(
     (key: TranslationKey) => {
