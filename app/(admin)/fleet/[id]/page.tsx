@@ -153,7 +153,7 @@ export default function VehicleDetailPage() {
 
               <Separator className="my-4" />
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {specs.map((spec) => (
                   <div key={spec.label} className="flex items-center gap-2">
                     <spec.icon className="h-4 w-4 text-muted-foreground" />

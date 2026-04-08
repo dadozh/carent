@@ -105,6 +105,11 @@ export default function ReservationsPage() {
   const customerDetailFileRef = useRef<HTMLInputElement>(null);
   const reservationDetailFileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [vehicleSearch, setVehicleSearch] = useState("");
+  const [vehicleFilterAvailable, setVehicleFilterAvailable] = useState(false);
+  const [vehicleFilterTransmission, setVehicleFilterTransmission] = useState("");
+  const [vehicleFilterCategory, setVehicleFilterCategory] = useState("");
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | "all">("all");
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [blockingReservations, setBlockingReservations] = useState<Reservation[]>([]);
@@ -271,6 +276,11 @@ export default function ReservationsPage() {
     setCustomerMode(customers.length > 0 ? "existing" : "new");
     setBookingStep("dates");
     setSaving(false);
+    setCustomerSearch("");
+    setVehicleSearch("");
+    setVehicleFilterAvailable(false);
+    setVehicleFilterTransmission("");
+    setVehicleFilterCategory("");
   }
 
   function setEuropeanDateInput(key: keyof typeof dateInputs, value: string) {
@@ -562,9 +572,11 @@ export default function ReservationsPage() {
     }
   }
 
+  const mobileDetail = showNewBooking || !!selectedReservation;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className={mobileDetail ? "flex flex-col flex-1 min-h-0 lg:block lg:space-y-6" : "space-y-6"}>
+      <div className={`flex items-center justify-between ${showNewBooking || selectedReservation ? "hidden lg:flex" : ""}`}>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("res.title")}</h1>
           <p className="text-muted-foreground" suppressHydrationWarning>
@@ -578,8 +590,8 @@ export default function ReservationsPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative w-64">
+      <div className={`flex flex-wrap items-center gap-3 ${showNewBooking || selectedReservation ? "hidden lg:flex" : ""}`}>
+        <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={t("res.searchPlaceholder")}
@@ -588,22 +600,24 @@ export default function ReservationsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-1 rounded-lg border p-1">
-          {statusFilters.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                statusFilter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="w-full min-w-0 overflow-x-auto sm:w-auto">
+          <div className="flex gap-1 rounded-lg border p-1 w-max">
+            {statusFilters.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  statusFilter === f.value
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="w-36">
+        <div className="flex-1 sm:flex-none sm:w-36">
           <EuropeanDateInput
             displayValue={filterDateInputs.startDate}
             isoValue={filterDates.startDate}
@@ -613,7 +627,7 @@ export default function ReservationsPage() {
             onIsoChange={(value) => setFilterIsoDateInput("startDate", value)}
           />
         </div>
-        <div className="w-36">
+        <div className="flex-1 sm:flex-none sm:w-36">
           <EuropeanDateInput
             displayValue={filterDateInputs.endDate}
             isoValue={filterDates.endDate}
@@ -626,8 +640,8 @@ export default function ReservationsPage() {
         <Button variant="outline" onClick={clearReservationFilters}>{t("common.clear")}</Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+      <div className={`grid gap-6 lg:grid-cols-5 ${mobileDetail ? "flex-1 min-h-0 lg:flex-none" : ""}`}>
+        <div className={`lg:col-span-3 ${selectedReservation || showNewBooking ? "hidden lg:block" : ""}`}>
           <Card>
             <div className="divide-y">
               {reservations.map((reservation) => (
@@ -670,16 +684,21 @@ export default function ReservationsPage() {
           </Card>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className={`lg:col-span-2 ${!selectedReservation && !showNewBooking ? "hidden lg:block" : "flex flex-col min-h-0 lg:block"}`}>
           {showNewBooking ? (
-            <Card>
+            <Card className="flex flex-col flex-1 min-h-0 lg:flex-none">
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>{t("res.newBooking")}</CardTitle>
-                <button onClick={() => setShowNewBooking(false)}>
+                <div className="flex items-center gap-2">
+                  <button className="lg:hidden" onClick={() => setShowNewBooking(false)}>
+                    <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                  <CardTitle>{t("res.newBooking")}</CardTitle>
+                </div>
+                <button className="hidden lg:block" onClick={() => setShowNewBooking(false)}>
                   <X className="h-4 w-4 text-muted-foreground" />
                 </button>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex-1 overflow-y-auto min-h-0">
                 <div className="flex items-center gap-1 mb-6">
                   {steps.map((step, i) => (
                     <div key={step.key} className="flex items-center gap-1">
@@ -782,44 +801,90 @@ export default function ReservationsPage() {
                   </div>
                 )}
 
-                {bookingStep === "vehicle" && (
-                  <div className="space-y-2 max-h-80 overflow-auto">
-                    {vehicles.filter((v) => v.status === "available" && !vehicleHasConflict(v.id)).length === 0 && (
-                      <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                        {t("fleet.noVehicles")}
-                      </p>
-                    )}
-                    {vehicles
-                      .filter((v) => v.status === "available")
-                      .map((v) => {
-                        const hasConflict = vehicleHasConflict(v.id);
-                        return (
+                {bookingStep === "vehicle" && (() => {
+                  const transmissions = [...new Set(vehicles.filter(v => v.status === "available").map(v => v.transmission))].sort();
+                  const categories = [...new Set(vehicles.filter(v => v.status === "available").map(v => v.category))].sort();
+                  const filteredVehicles = vehicles
+                    .filter((v) => v.status === "available")
+                    .filter((v) => !vehicleFilterAvailable || !vehicleHasConflict(v.id))
+                    .filter((v) => !vehicleFilterTransmission || v.transmission === vehicleFilterTransmission)
+                    .filter((v) => !vehicleFilterCategory || v.category === vehicleFilterCategory)
+                    .filter((v) => {
+                      const q = vehicleSearch.trim().toLowerCase();
+                      return !q || `${v.make} ${v.model} ${v.year}`.toLowerCase().includes(q);
+                    });
+                  return (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder={t("fleet.searchPlaceholder")}
+                          className="pl-9"
+                          value={vehicleSearch}
+                          onChange={(e) => setVehicleSearch(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          onClick={() => setVehicleFilterAvailable(!vehicleFilterAvailable)}
+                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${vehicleFilterAvailable ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}
+                        >
+                          {t("fleet.status.available")}
+                        </button>
+                        {transmissions.map((tr) => (
                           <button
-                            key={v.id}
-                            disabled={hasConflict}
-                            onClick={() => setNewBooking({ ...newBooking, vehicleId: v.id })}
-                            className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                              newBooking.vehicleId === v.id ? "border-primary bg-primary/5" : "hover:bg-muted"
-                            }`}
+                            key={tr}
+                            onClick={() => setVehicleFilterTransmission(vehicleFilterTransmission === tr ? "" : tr)}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${vehicleFilterTransmission === tr ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}
                           >
-                            <Car className="h-5 w-5 text-muted-foreground shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">
-                                {v.make} {v.model}
-                              </p>
-                              <p className="text-xs text-muted-foreground capitalize">
-                                {t(`fleet.${v.category}` as const)} &middot; {v.seats} {t("fleet.seats").toLowerCase()} &middot; {getTransmissionLabel(v.transmission)}
-                              </p>
-                              {hasConflict && (
-                                <p className="mt-1 text-xs text-destructive">{t("booking.vehicleUnavailableForPeriod")}</p>
-                              )}
-                            </div>
-                            <p className="text-sm font-bold text-primary">&euro;{v.dailyRate}{t("common.perDay")}</p>
+                            {getTransmissionLabel(tr)}
                           </button>
-                        );
-                      })}
-                  </div>
-                )}
+                        ))}
+                        {categories.map((cat) => (
+                          <button
+                            key={cat}
+                            onClick={() => setVehicleFilterCategory(vehicleFilterCategory === cat ? "" : cat)}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${vehicleFilterCategory === cat ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}
+                          >
+                            {t(`fleet.${cat}` as const)}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="space-y-2">
+                        {filteredVehicles.length === 0 && (
+                          <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                            {t("fleet.noVehicles")}
+                          </p>
+                        )}
+                        {filteredVehicles.map((v) => {
+                          const hasConflict = vehicleHasConflict(v.id);
+                          return (
+                            <button
+                              key={v.id}
+                              disabled={hasConflict}
+                              onClick={() => setNewBooking({ ...newBooking, vehicleId: v.id })}
+                              className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                newBooking.vehicleId === v.id ? "border-primary bg-primary/5" : "hover:bg-muted"
+                              }`}
+                            >
+                              <Car className="h-5 w-5 text-muted-foreground shrink-0" />
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{v.make} {v.model}</p>
+                                <p className="text-xs text-muted-foreground capitalize">
+                                  {t(`fleet.${v.category}` as const)} &middot; {v.seats} {t("fleet.seats").toLowerCase()} &middot; {getTransmissionLabel(v.transmission)}
+                                </p>
+                                {hasConflict && (
+                                  <p className="mt-1 text-xs text-destructive">{t("booking.vehicleUnavailableForPeriod")}</p>
+                                )}
+                              </div>
+                              <p className="text-sm font-bold text-primary">&euro;{v.dailyRate}{t("common.perDay")}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {bookingStep === "customer" && (
                   <div className="space-y-4">
@@ -846,8 +911,26 @@ export default function ReservationsPage() {
                     </div>
 
                     {customerMode === "existing" ? (
-                      <div className="space-y-2 max-h-80 overflow-auto">
-                        {customers.map((c) => (
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            placeholder={t("booking.searchCustomers")}
+                            className="pl-9"
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                        {customers.filter((c) => {
+                          const q = customerSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          return (
+                            `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) ||
+                            c.email.toLowerCase().includes(q) ||
+                            c.phone?.toLowerCase().includes(q)
+                          );
+                        }).map((c) => (
                           <button
                             key={c.id}
                             onClick={() => setNewBooking({ ...newBooking, customerId: c.id })}
@@ -869,6 +952,7 @@ export default function ReservationsPage() {
                             )}
                           </button>
                         ))}
+                        </div>
                       </div>
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -943,7 +1027,7 @@ export default function ReservationsPage() {
                             onChange={(e) => void handleNewCustomerFiles(e.target.files)}
                           />
                           {normalizePhotoUrls(newCustomer.images).length > 0 && (
-                            <div className="mt-2 grid grid-cols-3 gap-2">
+                            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                               {normalizePhotoUrls(newCustomer.images).map((image, index) => (
                                 <div
                                   key={image}
@@ -1068,7 +1152,7 @@ export default function ReservationsPage() {
                         onChange={(e) => void handleNewReservationFiles(e.target.files)}
                       />
                       {normalizePhotoUrls(newBooking.images).length > 0 && (
-                        <div className="mt-2 grid grid-cols-3 gap-2">
+                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                           {normalizePhotoUrls(newBooking.images).map((image, index) => (
                             <div
                               key={image}
@@ -1092,38 +1176,43 @@ export default function ReservationsPage() {
                   </div>
                 )}
 
-                {bookingStep !== "summary" && (
-                  <div className="flex justify-between mt-6">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={currentStepIndex === 0}
-                      onClick={() => setBookingStep(steps[currentStepIndex - 1].key)}
-                    >
-                      <ChevronLeft className="mr-1 h-4 w-4" />
-                      {t("common.back")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={!canContinue(bookingStep)}
-                      onClick={() => setBookingStep(steps[currentStepIndex + 1].key)}
-                    >
-                      {t("common.next")}
-                      <ChevronRight className="ml-1 h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
               </CardContent>
+              {bookingStep !== "summary" && (
+                <div className="shrink-0 border-t px-6 py-4 flex justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentStepIndex === 0}
+                    onClick={() => setBookingStep(steps[currentStepIndex - 1].key)}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" />
+                    {t("common.back")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!canContinue(bookingStep)}
+                    onClick={() => setBookingStep(steps[currentStepIndex + 1].key)}
+                  >
+                    {t("common.next")}
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </Card>
           ) : selectedReservation ? (
-            <Card>
+            <Card className="flex flex-col flex-1 min-h-0 lg:flex-none">
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>{t("res.bookingDetails")}</CardTitle>
-                <button onClick={() => setSelectedReservation(null)}>
+                <div className="flex items-center gap-2">
+                  <button className="lg:hidden" onClick={() => setSelectedReservation(null)}>
+                    <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                  <CardTitle>{t("res.bookingDetails")}</CardTitle>
+                </div>
+                <button className="hidden lg:block" onClick={() => setSelectedReservation(null)}>
                   <X className="h-4 w-4 text-muted-foreground" />
                 </button>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 flex-1 overflow-y-auto min-h-0">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">#{selectedReservation.id}</p>
                   <Badge className={statusColors[selectedReservation.status]} variant="secondary">
@@ -1236,7 +1325,7 @@ export default function ReservationsPage() {
                     )}
                   </div>
                   {selectedReservationCustomer && normalizePhotoUrls(selectedReservationCustomer.images).length ? (
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {normalizePhotoUrls(selectedReservationCustomer.images).map((image, index) => (
                         <div
                           key={image}
@@ -1281,7 +1370,7 @@ export default function ReservationsPage() {
                     </>
                   </div>
                   {normalizePhotoUrls(selectedReservation.images).length ? (
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {normalizePhotoUrls(selectedReservation.images).map((image, index) => (
                         <div
                           key={image}

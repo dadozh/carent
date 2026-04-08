@@ -488,7 +488,7 @@ export function VehicleForm({ vehicle, onSave, onBack }: VehicleFormProps) {
           <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} />
 
           {allDisplayImages.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
               {allDisplayImages.map(({ url, isKept, index }, displayIdx) => (
                 <div key={`${isKept ? "k" : "n"}-${index}`} className="group relative aspect-video overflow-hidden rounded-lg bg-muted">
                   <Image src={url} alt={`Photo ${displayIdx + 1}`} fill className="object-cover" unoptimized />

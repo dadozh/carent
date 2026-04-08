@@ -224,7 +224,14 @@ export function listReservationsWithTotal(filters: ReservationListFilters = {}) 
     .prepare("SELECT data FROM reservations ORDER BY created_at DESC")
     .all() as JsonRow[];
 
-  const reservations = rows.map(parseReservation).filter((reservation) => reservationMatchesFilters(reservation, filters));
+  const reservations = rows
+    .map(parseReservation)
+    .filter((reservation) => reservationMatchesFilters(reservation, filters))
+    .sort((a, b) => {
+      const aEnd = `${a.endDate}T${a.returnTime ?? "00:00"}`;
+      const bEnd = `${b.endDate}T${b.returnTime ?? "00:00"}`;
+      return bEnd.localeCompare(aEnd);
+    });
   const limitedReservations = typeof filters.limit === "number" && filters.limit > 0
     ? reservations.slice(0, filters.limit)
     : reservations;

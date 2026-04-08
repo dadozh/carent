@@ -127,7 +127,7 @@ export default function FleetPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative w-64">
+        <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={t("fleet.searchPlaceholder")}
@@ -137,36 +137,40 @@ export default function FleetPage() {
           />
         </div>
 
-        <div className="flex gap-1 rounded-lg border p-1">
-          {statusFilters.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                statusFilter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="w-full min-w-0 overflow-x-auto sm:w-auto">
+          <div className="flex gap-1 rounded-lg border p-1 w-max">
+            {statusFilters.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  statusFilter === f.value
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-1 rounded-lg border p-1">
-          {categoryFilters.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setCategoryFilter(f.value)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                categoryFilter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="w-full min-w-0 overflow-x-auto sm:w-auto">
+          <div className="flex gap-1 rounded-lg border p-1 w-max">
+            {categoryFilters.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setCategoryFilter(f.value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  categoryFilter === f.value
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
