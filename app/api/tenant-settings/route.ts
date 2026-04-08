@@ -1,0 +1,34 @@
+import { getApiSession } from "@/lib/api-session";
+import { assertCan } from "@/lib/permissions";
+import { getTenantSettings, updateTenantSettings } from "@/lib/auth-db";
+
+export const runtime = "nodejs";
+
+export async function GET() {
+  try {
+    const { tenantId, role } = await getApiSession();
+    assertCan(role, "read");
+    return Response.json({ settings: getTenantSettings(tenantId) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load tenant settings";
+    const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 400;
+    return Response.json({ error: message }, { status });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { tenantId, role } = await getApiSession();
+    assertCan(role, "manageSettings");
+    const data = await request.json() as { locations?: string[]; extras?: string[] };
+    updateTenantSettings(tenantId, {
+      locations: data.locations ?? [],
+      extras: data.extras ?? [],
+    });
+    return Response.json({ settings: getTenantSettings(tenantId) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to update tenant settings";
+    const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 400;
+    return Response.json({ error: message }, { status });
+  }
+}

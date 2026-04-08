@@ -5,23 +5,56 @@ import path from "node:path";
 import type { Customer, Reservation } from "@/lib/mock-data";
 import { RESERVATION_BLOCKING_STATUSES, reservationBlocksPeriod } from "@/lib/reservation-rules";
 import { getVehicleById } from "@/lib/vehicle-db";
+import { getTenantSettings } from "@/lib/auth-db";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
-const DB_PATH = path.join(DATA_DIR, "carent.sqlite");
+const DB_PATH = process.env.CARENT_DB_PATH ?? path.join(DATA_DIR, "carent.sqlite");
 
 type CustomerInput = Omit<Customer, "id" | "verified" | "totalRentals" | "totalSpent" | "images"> & {
   verified?: boolean;
   images?: string[];
 };
 
-type ReservationInput = Omit<Reservation, "id" | "createdAt" | "vehiclePlate" | "images"> & {
+type ReservationInput = Omit<
+  Reservation,
+  "id" | "createdAt" | "vehiclePlate" | "images" | "customerName" | "vehicleName" | "dailyRate" | "totalCost"
+> & {
   createdAt?: string;
   vehiclePlate?: string;
   images?: string[];
 };
 
+export interface PublicBookingCustomerInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  licenseNumber: string;
+  licenseExpiry: string;
+  address: string;
+}
+
+export interface PublicBookingInput {
+  vehicleId: string;
+  startDate: string;
+  endDate: string;
+  pickupLocation: string;
+  returnLocation: string;
+  extras: string[];
+  customer: PublicBookingCustomerInput;
+}
+
 type ReservationStatusUpdate = {
   status: Reservation["status"];
+  cancellationReason?: string;
+  adjustedCost?: number;
+};
+
+export type VehicleSwapInput = {
+  toVehicleId: string;
+  toVehicleName: string;
+  toVehiclePlate: string;
+  reason: string;
 };
 
 export interface ReservationListFilters {
@@ -45,7 +78,7 @@ let db: Database.Database | null = null;
 function getDb() {
   if (db) return db;
 
-  mkdirSync(DATA_DIR, { recursive: true });
+  if (!DB_PATH.startsWith(":")) mkdirSync(DATA_DIR, { recursive: true });
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.exec(`
@@ -64,7 +97,61 @@ function getDb() {
     );
   `);
 
+  addColumnIfMissing("customers", "tenant_id", "TEXT NOT NULL DEFAULT 't_default'");
+
+  // Migrate reservations to composite (tenant_id, id) primary key so each tenant
+  // can have its own sequential counter without global ID collisions.
+  migrateReservationsToCompositePk();
+
   return db;
+}
+
+function migrateReservationsToCompositePk() {
+  const info = db!
+    .prepare("PRAGMA table_info(reservations)")
+    .all() as Array<{ name: string; pk: number }>;
+
+  const idPk = info.find((c) => c.name === "id")?.pk ?? 0;
+  const tenantPk = info.find((c) => c.name === "tenant_id")?.pk ?? 0;
+
+  // Already on composite PK schema — nothing to do.
+  if (tenantPk > 0) return;
+
+  // Old schema: id is the sole primary key. Recreate with composite PK.
+  // tenant_id may or may not already exist as a plain column.
+  const hasTenantCol = info.some((c) => c.name === "tenant_id");
+  const selectTenant = hasTenantCol ? "COALESCE(tenant_id, 't_default')" : "'t_default'";
+
+  db!.exec(`
+    CREATE TABLE reservations_new (
+      id         TEXT NOT NULL,
+      tenant_id  TEXT NOT NULL DEFAULT 't_default',
+      data       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (tenant_id, id)
+    );
+    INSERT INTO reservations_new (id, tenant_id, data, created_at, updated_at)
+      SELECT id, ${selectTenant}, data, created_at, updated_at FROM reservations;
+    DROP TABLE reservations;
+    ALTER TABLE reservations_new RENAME TO reservations;
+  `);
+
+  // Suppress unused variable warning for idPk
+  void idPk;
+}
+
+function addColumnIfMissing(tableName: string, columnName: string, columnDef: string) {
+  const cols = db!.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (!cols.some((col) => col.name === columnName)) {
+    db!.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
+  }
+}
+
+/** For testing only — closes and resets the DB singleton. */
+export function __closeDb() {
+  db?.close();
+  db = null;
 }
 
 function parseCustomer(row: JsonRow): Customer {
@@ -88,10 +175,10 @@ function normalizeImageList(images?: string[]) {
   return (images ?? []).filter((image) => image.trim());
 }
 
-function getNextReservationId() {
+function getNextReservationId(tenantId: string) {
   const rows = getDb()
-    .prepare("SELECT id FROM reservations")
-    .all() as IdRow[];
+    .prepare("SELECT id FROM reservations WHERE tenant_id = ?")
+    .all(tenantId) as IdRow[];
   const currentMax = rows.reduce((max, row) => {
     if (!/^\d+$/.test(row.id)) return max;
     return Math.max(max, Number(row.id));
@@ -117,39 +204,16 @@ function validateCustomer(input: CustomerInput) {
   if (!input.licenseExpiry?.trim()) throw new Error("Customer license expiry is required");
 }
 
-function findDuplicateCustomer(input: CustomerInput) {
+function findDuplicateCustomer(input: CustomerInput, tenantId: string) {
   const email = normalize(input.email);
   const licenseNumber = normalize(input.licenseNumber);
 
-  return listCustomers().find((customer) =>
+  return listCustomers(tenantId).find((customer) =>
     normalize(customer.email) === email || normalize(customer.licenseNumber) === licenseNumber
   );
 }
 
-export function listCustomers(): Customer[] {
-  const rows = getDb()
-    .prepare("SELECT data FROM customers ORDER BY created_at DESC")
-    .all() as JsonRow[];
-
-  return rows.map(parseCustomer);
-}
-
-export function getCustomerById(id: string): Customer | null {
-  const row = getDb()
-    .prepare("SELECT data FROM customers WHERE id = ?")
-    .get(id) as JsonRow | undefined;
-
-  return row ? parseCustomer(row) : null;
-}
-
-export function createCustomer(input: CustomerInput): Customer {
-  validateCustomer(input);
-
-  const duplicate = findDuplicateCustomer(input);
-  if (duplicate) {
-    throw new Error("A customer with this email or license number already exists");
-  }
-
+function createCustomerRecord(input: CustomerInput, tenantId: string): Customer {
   const customer: Customer = {
     ...input,
     id: `c_${randomUUID()}`,
@@ -160,14 +224,41 @@ export function createCustomer(input: CustomerInput): Customer {
   };
 
   getDb()
-    .prepare("INSERT INTO customers (id, data) VALUES (?, ?)")
-    .run(customer.id, JSON.stringify(customer));
+    .prepare("INSERT INTO customers (id, tenant_id, data) VALUES (?, ?, ?)")
+    .run(customer.id, tenantId, JSON.stringify(customer));
 
   return customer;
 }
 
-export function updateCustomerImages(id: string, images: string[]): Customer {
-  const customer = getCustomerById(id);
+export function listCustomers(tenantId: string): Customer[] {
+  const rows = getDb()
+    .prepare("SELECT data FROM customers WHERE tenant_id = ? ORDER BY created_at DESC")
+    .all(tenantId) as JsonRow[];
+
+  return rows.map(parseCustomer);
+}
+
+export function getCustomerById(id: string, tenantId: string): Customer | null {
+  const row = getDb()
+    .prepare("SELECT data FROM customers WHERE id = ? AND tenant_id = ?")
+    .get(id, tenantId) as JsonRow | undefined;
+
+  return row ? parseCustomer(row) : null;
+}
+
+export function createCustomer(input: CustomerInput, tenantId: string): Customer {
+  validateCustomer(input);
+
+  const duplicate = findDuplicateCustomer(input, tenantId);
+  if (duplicate) {
+    throw new Error("A customer with this email or license number already exists");
+  }
+
+  return createCustomerRecord(input, tenantId);
+}
+
+export function updateCustomerImages(id: string, images: string[], tenantId: string): Customer {
+  const customer = getCustomerById(id, tenantId);
   if (!customer) throw new Error("Customer not found");
 
   const updatedCustomer: Customer = {
@@ -176,8 +267,8 @@ export function updateCustomerImages(id: string, images: string[]): Customer {
   };
 
   getDb()
-    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(JSON.stringify(updatedCustomer), id);
+    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedCustomer), id, tenantId);
 
   return updatedCustomer;
 }
@@ -219,10 +310,10 @@ function reservationMatchesFilters(reservation: Reservation, filters: Reservatio
   return true;
 }
 
-export function listReservationsWithTotal(filters: ReservationListFilters = {}) {
+export function listReservationsWithTotal(tenantId: string, filters: ReservationListFilters = {}) {
   const rows = getDb()
-    .prepare("SELECT data FROM reservations ORDER BY created_at DESC")
-    .all() as JsonRow[];
+    .prepare("SELECT data FROM reservations WHERE tenant_id = ? ORDER BY created_at DESC")
+    .all(tenantId) as JsonRow[];
 
   const reservations = rows
     .map(parseReservation)
@@ -242,20 +333,20 @@ export function listReservationsWithTotal(filters: ReservationListFilters = {}) 
   };
 }
 
-export function listReservations(filters: ReservationListFilters = {}): Reservation[] {
-  return listReservationsWithTotal(filters).reservations;
+export function listReservations(tenantId: string, filters: ReservationListFilters = {}): Reservation[] {
+  return listReservationsWithTotal(tenantId, filters).reservations;
 }
 
-export function getReservationById(id: string): Reservation | null {
+export function getReservationById(id: string, tenantId: string): Reservation | null {
   const row = getDb()
-    .prepare("SELECT data FROM reservations WHERE id = ?")
-    .get(id) as JsonRow | undefined;
+    .prepare("SELECT data FROM reservations WHERE id = ? AND tenant_id = ?")
+    .get(id, tenantId) as JsonRow | undefined;
 
   return row ? parseReservation(row) : null;
 }
 
-export function updateReservationStatus(id: string, input: ReservationStatusUpdate): Reservation {
-  const reservation = getReservationById(id);
+export function updateReservationStatus(id: string, input: ReservationStatusUpdate, tenantId: string): Reservation {
+  const reservation = getReservationById(id, tenantId);
   if (!reservation) throw new Error("Reservation not found");
 
   if (input.status !== "cancelled") {
@@ -273,17 +364,50 @@ export function updateReservationStatus(id: string, input: ReservationStatusUpda
   const updatedReservation: Reservation = {
     ...reservation,
     status: input.status,
+    ...(input.cancellationReason !== undefined && { cancellationReason: input.cancellationReason }),
+    ...(input.adjustedCost !== undefined && { adjustedCost: input.adjustedCost }),
   };
 
   getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(JSON.stringify(updatedReservation), id);
+    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedReservation), id, tenantId);
 
   return updatedReservation;
 }
 
-export function updateReservationImages(id: string, images: string[]): Reservation {
-  const reservation = getReservationById(id);
+export function swapReservationVehicle(id: string, input: VehicleSwapInput, tenantId: string): Reservation {
+  const reservation = getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status !== "active") throw new Error("Vehicle swap is only allowed for active reservations");
+
+  const swap = {
+    fromVehicleId: reservation.vehicleId,
+    fromVehicleName: reservation.vehicleName,
+    fromVehiclePlate: reservation.vehiclePlate,
+    toVehicleId: input.toVehicleId,
+    toVehicleName: input.toVehicleName,
+    toVehiclePlate: input.toVehiclePlate,
+    swappedAt: new Date().toISOString(),
+    reason: input.reason,
+  };
+
+  const updatedReservation: Reservation = {
+    ...reservation,
+    vehicleId: input.toVehicleId,
+    vehicleName: input.toVehicleName,
+    vehiclePlate: input.toVehiclePlate,
+    vehicleSwaps: [...(reservation.vehicleSwaps ?? []), swap],
+  };
+
+  getDb()
+    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedReservation), id, tenantId);
+
+  return updatedReservation;
+}
+
+export function updateReservationImages(id: string, images: string[], tenantId: string): Reservation {
+  const reservation = getReservationById(id, tenantId);
   if (!reservation) throw new Error("Reservation not found");
 
   const updatedReservation: Reservation = {
@@ -292,8 +416,8 @@ export function updateReservationImages(id: string, images: string[]): Reservati
   };
 
   getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(JSON.stringify(updatedReservation), id);
+    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedReservation), id, tenantId);
 
   return updatedReservation;
 }
@@ -338,8 +462,8 @@ function validateReservationPeriod(input: ReservationInput) {
   }
 }
 
-function validateReservationCustomer(input: ReservationInput) {
-  const customer = getCustomerById(input.customerId);
+function validateReservationCustomer(input: ReservationInput, tenantId: string) {
+  const customer = getCustomerById(input.customerId, tenantId);
   if (!customer) throw new Error("Customer not found");
   validateCustomer(customer);
 
@@ -351,17 +475,27 @@ function validateReservationCustomer(input: ReservationInput) {
   return customer;
 }
 
-function validateReservationVehicle(input: ReservationInput) {
-  const vehicle = getVehicleById(input.vehicleId);
+function validateReservationVehicle(input: ReservationInput, tenantId: string) {
+  const vehicle = getVehicleById(input.vehicleId, tenantId);
   if (!vehicle) throw new Error("Vehicle not found");
   if (vehicle.status !== "available") throw new Error("Vehicle is not available for booking");
   return vehicle;
 }
 
-function validateReservationExtras(input: ReservationInput) {
-  const allowedExtras = new Set(["GPS", "Wi-Fi", "Child Seat"]);
+function validateReservationExtras(input: ReservationInput, tenantId: string) {
+  const allowedExtras = new Set(getTenantSettings(tenantId).extras);
   const invalidExtra = input.extras.find((extra) => !allowedExtras.has(extra));
   if (invalidExtra) throw new Error(`Unsupported reservation extra: ${invalidExtra}`);
+}
+
+function validateReservationLocations(input: ReservationInput, tenantId: string) {
+  const allowedLocations = new Set(getTenantSettings(tenantId).locations);
+  if (!allowedLocations.has(input.pickupLocation)) {
+    throw new Error("Unsupported pickup location");
+  }
+  if (!allowedLocations.has(input.returnLocation)) {
+    throw new Error("Unsupported return location");
+  }
 }
 
 function reservationsOverlap(a: ReservationInput, b: Reservation) {
@@ -371,8 +505,8 @@ function reservationsOverlap(a: ReservationInput, b: Reservation) {
   return reservationBlocksPeriod(b, aStart, aEnd);
 }
 
-function validateVehicleReservationConflict(input: ReservationInput) {
-  const conflict = listReservations().find((reservation) =>
+function validateVehicleReservationConflict(input: ReservationInput, tenantId: string) {
+  const conflict = listReservations(tenantId).find((reservation) =>
     reservation.vehicleId === input.vehicleId &&
     RESERVATION_BLOCKING_STATUSES.includes(reservation.status) &&
     reservationsOverlap(input, reservation)
@@ -381,18 +515,19 @@ function validateVehicleReservationConflict(input: ReservationInput) {
   if (conflict) throw new Error("Vehicle is already reserved for the selected period");
 }
 
-export function createReservation(input: ReservationInput): Reservation {
+export function createReservation(input: ReservationInput, tenantId: string): Reservation {
   validateReservationPeriod(input);
-  const customer = validateReservationCustomer(input);
-  validateReservationExtras(input);
-  const vehicle = validateReservationVehicle(input);
-  validateVehicleReservationConflict(input);
+  const customer = validateReservationCustomer(input, tenantId);
+  validateReservationLocations(input, tenantId);
+  validateReservationExtras(input, tenantId);
+  const vehicle = validateReservationVehicle(input, tenantId);
+  validateVehicleReservationConflict(input, tenantId);
   const billableDays = getBillableDays(input);
   const totalCost = vehicle.dailyRate * billableDays;
 
   const reservation: Reservation = {
     ...input,
-    id: getNextReservationId(),
+    id: getNextReservationId(tenantId),
     customerName: `${customer.firstName} ${customer.lastName}`,
     vehicleName: `${vehicle.make} ${vehicle.model}`,
     vehiclePlate: vehicle.plate,
@@ -403,19 +538,45 @@ export function createReservation(input: ReservationInput): Reservation {
   };
 
   getDb()
-    .prepare("INSERT INTO reservations (id, data) VALUES (?, ?)")
-    .run(reservation.id, JSON.stringify(reservation));
+    .prepare("INSERT INTO reservations (id, tenant_id, data) VALUES (?, ?, ?)")
+    .run(reservation.id, tenantId, JSON.stringify(reservation));
 
-  if (customer) {
-    const updatedCustomer: Customer = {
-      ...customer,
-      totalRentals: customer.totalRentals + 1,
-      totalSpent: customer.totalSpent + reservation.totalCost,
-    };
-    getDb()
-      .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-      .run(JSON.stringify(updatedCustomer), customer.id);
-  }
+  const updatedCustomer: Customer = {
+    ...customer,
+    totalRentals: customer.totalRentals + 1,
+    totalSpent: customer.totalSpent + reservation.totalCost,
+  };
+  getDb()
+    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedCustomer), customer.id, tenantId);
 
   return reservation;
+}
+
+export function createPublicReservation(input: PublicBookingInput, tenantId: string): Reservation {
+  const customerInput: CustomerInput = {
+    ...input.customer,
+    verified: false,
+  };
+
+  validateCustomer(customerInput);
+
+  const existingCustomer = findDuplicateCustomer(customerInput, tenantId);
+  const customer = existingCustomer ?? createCustomerRecord(customerInput, tenantId);
+
+  const reservationInput: ReservationInput = {
+    customerId: customer.id,
+    vehicleId: input.vehicleId,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    pickupTime: "09:00",
+    returnTime: "09:00",
+    pickupLocation: input.pickupLocation,
+    returnLocation: input.returnLocation,
+    extras: input.extras,
+    status: "pending",
+    notes: "Public booking",
+  };
+
+  return createReservation(reservationInput, tenantId);
 }

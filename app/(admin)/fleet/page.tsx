@@ -11,10 +11,12 @@ import { Search, LayoutGrid, List, MapPin, Gauge, Fuel, Users, Plus } from "luci
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
+import { useCan } from "@/lib/role-context";
 
 export default function FleetPage() {
   const { t } = useI18n();
   const { vehicles } = useVehicles();
+  const canManageFleet = useCan("manageFleet");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<VehicleStatus | "all">("all");
   const [categoryFilter, setCategoryFilter] = useState<VehicleCategory | "all">("all");
@@ -103,12 +105,14 @@ export default function FleetPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/fleet/new">
-            <Button size="sm" className="gap-1.5">
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("fleet.addVehicle")}</span>
-            </Button>
-          </Link>
+          {canManageFleet && (
+            <Link href="/fleet/new">
+              <Button size="sm" className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">{t("fleet.addVehicle")}</span>
+              </Button>
+            </Link>
+          )}
           <div className="flex items-center gap-2 rounded-lg border p-1">
             <button
               onClick={() => setViewMode("grid")}

@@ -305,18 +305,19 @@ function main() {
     customer.totalSpent = stats.totalSpent;
   }
 
-  const insertVehicle = db.prepare("INSERT INTO vehicles (id, data) VALUES (?, ?)");
-  const insertCustomer = db.prepare("INSERT INTO customers (id, data) VALUES (?, ?)");
-  const insertReservation = db.prepare("INSERT INTO reservations (id, data) VALUES (?, ?)");
+  const DEFAULT_TENANT_ID = "t_default";
+  const insertVehicle = db.prepare("INSERT INTO vehicles (id, tenant_id, data) VALUES (?, ?, ?)");
+  const insertCustomer = db.prepare("INSERT INTO customers (id, tenant_id, data) VALUES (?, ?, ?)");
+  const insertReservation = db.prepare("INSERT INTO reservations (id, tenant_id, data) VALUES (?, ?, ?)");
 
   db.transaction(() => {
     db.prepare("DELETE FROM reservations WHERE id LIKE 'demo_%'").run();
     db.prepare("DELETE FROM customers WHERE id LIKE 'demo_%'").run();
     db.prepare("DELETE FROM vehicles WHERE id LIKE 'demo_%'").run();
 
-    for (const vehicle of vehicles) insertVehicle.run(vehicle.id, JSON.stringify(vehicle));
-    for (const customer of customers) insertCustomer.run(customer.id, JSON.stringify(customer));
-    for (const reservation of reservations) insertReservation.run(reservation.id, JSON.stringify(reservation));
+    for (const vehicle of vehicles) insertVehicle.run(vehicle.id, DEFAULT_TENANT_ID, JSON.stringify(vehicle));
+    for (const customer of customers) insertCustomer.run(customer.id, DEFAULT_TENANT_ID, JSON.stringify(customer));
+    for (const reservation of reservations) insertReservation.run(reservation.id, DEFAULT_TENANT_ID, JSON.stringify(reservation));
   })();
 
   console.log(`Seeded ${vehicles.length} current demo vehicles.`);

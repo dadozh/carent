@@ -1,17 +1,26 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { I18nProvider } from "@/lib/i18n";
 
-const plusJakarta = Plus_Jakarta_Sans({
+const plusJakarta = localFont({
   variable: "--font-geist-sans",
-  subsets: ["latin", "latin-ext"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  src: [
+    { path: "./fonts/PlusJakartaSans-400.ttf", weight: "400", style: "normal" },
+    { path: "./fonts/PlusJakartaSans-500.ttf", weight: "500", style: "normal" },
+    { path: "./fonts/PlusJakartaSans-600.ttf", weight: "600", style: "normal" },
+    { path: "./fonts/PlusJakartaSans-700.ttf", weight: "700", style: "normal" },
+  ],
+  display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
   variable: "--font-geist-mono",
-  subsets: ["latin", "latin-ext"],
+  src: [
+    { path: "./fonts/JetBrainsMono-400.ttf", weight: "400", style: "normal" },
+    { path: "./fonts/JetBrainsMono-500.ttf", weight: "500", style: "normal" },
+  ],
+  display: "swap",
 });
 
 export const metadata: Metadata = {

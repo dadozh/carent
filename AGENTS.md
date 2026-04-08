@@ -11,3 +11,11 @@ Mobile first, tablet second, desktop third. Write CSS and layouts starting from 
 # Date and Time Formatting
 
 Use European date formatting everywhere in the UI: `dd.MM.yyyy`. Use 24-hour time everywhere: `HH:mm`. Keep HTML form control values and persisted database values in machine-readable ISO-style strings where required, but format dates/times for users at display boundaries.
+
+# test tenants
+test-tenant@carent.com
+password: Tmp-25c94f69a6!
+
+(super admin)
+platform@carent.com
+admin1234

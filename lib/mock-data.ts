@@ -66,6 +66,20 @@ export interface Reservation {
   notes: string;
   createdAt: string;
   images: string[];
+  // Cancellation details (active reservations)
+  cancellationReason?: string;
+  adjustedCost?: number;
+  // Vehicle swap log (mid-rental replacement)
+  vehicleSwaps?: Array<{
+    fromVehicleId: string;
+    fromVehicleName: string;
+    fromVehiclePlate: string;
+    toVehicleId: string;
+    toVehicleName: string;
+    toVehiclePlate: string;
+    swappedAt: string;
+    reason: string;
+  }>;
 }
 
 export const vehicles: Vehicle[] = [];

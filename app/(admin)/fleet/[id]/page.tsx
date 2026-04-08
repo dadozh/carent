@@ -10,6 +10,7 @@ import { ArrowLeft, Calendar, Fuel, Gauge, MapPin, Settings, Users, Pencil } fro
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/lib/role-context";
 import { formatDate, formatDateRange } from "@/lib/date-format";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 
@@ -17,6 +18,7 @@ export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useI18n();
   const { getVehicle, isLoading } = useVehicles();
+  const canManageFleet = useCan("manageFleet");
   const vehicle = getVehicle(id);
 
   if (isLoading) return <p className="p-6 text-muted-foreground">{t("common.loading")}</p>;
@@ -110,12 +112,14 @@ export default function VehicleDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           {t("fleet.backToFleet")}
         </Link>
-        <Link href={`/fleet/${vehicle.id}/edit`}>
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <Pencil className="h-3.5 w-3.5" />
-            {t("common.edit")}
-          </Button>
-        </Link>
+        {canManageFleet && (
+          <Link href={`/fleet/${vehicle.id}/edit`}>
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <Pencil className="h-3.5 w-3.5" />
+              {t("common.edit")}
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
