@@ -21,6 +21,7 @@ type ReservationInput = Omit<
 > & {
   createdAt?: string;
   vehiclePlate?: string;
+  dailyRate?: number;
   images?: string[];
 };
 
@@ -523,7 +524,13 @@ export function createReservation(input: ReservationInput, tenantId: string): Re
   const vehicle = validateReservationVehicle(input, tenantId);
   validateVehicleReservationConflict(input, tenantId);
   const billableDays = getBillableDays(input);
-  const totalCost = vehicle.dailyRate * billableDays;
+  const dailyRate = input.dailyRate ?? vehicle.dailyRate;
+
+  if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+    throw new Error("Daily rate must be greater than zero");
+  }
+
+  const totalCost = dailyRate * billableDays;
 
   const reservation: Reservation = {
     ...input,
@@ -531,7 +538,7 @@ export function createReservation(input: ReservationInput, tenantId: string): Re
     customerName: `${customer.firstName} ${customer.lastName}`,
     vehicleName: `${vehicle.make} ${vehicle.model}`,
     vehiclePlate: vehicle.plate,
-    dailyRate: vehicle.dailyRate,
+    dailyRate,
     totalCost,
     createdAt: input.createdAt ?? new Date().toISOString().slice(0, 10),
     images: normalizeImageList(input.images),

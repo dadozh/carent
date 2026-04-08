@@ -89,6 +89,7 @@ const initialBooking = {
   returnLocation: "",
   vehicleId: "",
   customerId: "",
+  dailyRateOverride: "",
   extras: [] as string[],
   images: [] as string[],
 };
@@ -184,7 +185,13 @@ export default function ReservationsPage() {
   const dayCount = rentalDurationMs >= 24 * 60 * 60 * 1000
     ? Math.ceil(rentalDurationMs / (1000 * 60 * 60 * 24))
     : 0;
-  const totalCost = selectedVehicle ? selectedVehicle.dailyRate * dayCount : 0;
+  const parsedDailyRateOverride = Number(newBooking.dailyRateOverride);
+  const effectiveDailyRate = selectedVehicle
+    ? Number.isFinite(parsedDailyRateOverride) && parsedDailyRateOverride > 0
+      ? parsedDailyRateOverride
+      : selectedVehicle.dailyRate
+    : 0;
+  const totalCost = effectiveDailyRate * dayCount;
   const customerError = getCustomerError();
 
   const statusFilters: { value: ReservationStatus | "all"; label: string }[] = [
@@ -541,7 +548,7 @@ export default function ReservationsPage() {
         endDate: newBooking.endDate,
         returnTime: newBooking.returnTime,
         status: "confirmed",
-        dailyRate: selectedVehicle.dailyRate,
+        dailyRate: effectiveDailyRate,
         totalCost,
         extras: newBooking.extras,
         pickupLocation: newBooking.pickupLocation,
@@ -812,7 +819,7 @@ export default function ReservationsPage() {
                         <Input
                           type="time"
                           value={newBooking.pickupTime}
-                          onChange={(e) => setNewBooking({ ...newBooking, pickupTime: e.target.value })}
+                          onChange={(e) => setNewBooking((current) => ({ ...current, pickupTime: e.target.value }))}
                         />
                       </div>
                     </div>
@@ -831,7 +838,7 @@ export default function ReservationsPage() {
                         <Input
                           type="time"
                           value={newBooking.returnTime}
-                          onChange={(e) => setNewBooking({ ...newBooking, returnTime: e.target.value })}
+                          onChange={(e) => setNewBooking((current) => ({ ...current, returnTime: e.target.value }))}
                         />
                       </div>
                     </div>
@@ -846,7 +853,7 @@ export default function ReservationsPage() {
                         {bookingLocations.map((loc) => (
                           <button
                             key={loc}
-                            onClick={() => setNewBooking({ ...newBooking, pickupLocation: loc })}
+                            onClick={() => setNewBooking((current) => ({ ...current, pickupLocation: loc }))}
                             className={`flex-1 rounded-lg border p-2 text-sm ${
                               newBooking.pickupLocation === loc ? "border-primary bg-primary/5" : ""
                             }`}
@@ -863,7 +870,7 @@ export default function ReservationsPage() {
                         {bookingLocations.map((loc) => (
                           <button
                             key={loc}
-                            onClick={() => setNewBooking({ ...newBooking, returnLocation: loc })}
+                            onClick={() => setNewBooking((current) => ({ ...current, returnLocation: loc }))}
                             className={`flex-1 rounded-lg border p-2 text-sm ${
                               newBooking.returnLocation === loc ? "border-primary bg-primary/5" : ""
                             }`}
@@ -938,7 +945,11 @@ export default function ReservationsPage() {
                             <button
                               key={v.id}
                               disabled={hasConflict}
-                              onClick={() => setNewBooking({ ...newBooking, vehicleId: v.id })}
+                              onClick={() => setNewBooking((current) => ({
+                                ...current,
+                                vehicleId: v.id,
+                                dailyRateOverride: "",
+                              }))}
                               className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                                 newBooking.vehicleId === v.id ? "border-primary bg-primary/5" : "hover:bg-muted"
                               }`}
@@ -1009,7 +1020,7 @@ export default function ReservationsPage() {
                         }).map((c) => (
                           <button
                             key={c.id}
-                            onClick={() => setNewBooking({ ...newBooking, customerId: c.id })}
+                            onClick={() => setNewBooking((current) => ({ ...current, customerId: c.id }))}
                             className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
                               newBooking.customerId === c.id ? "border-primary bg-primary/5" : "hover:bg-muted"
                             }`}
@@ -1140,12 +1151,12 @@ export default function ReservationsPage() {
                         <button
                           key={extra}
                           onClick={() =>
-                            setNewBooking({
-                              ...newBooking,
+                            setNewBooking((current) => ({
+                              ...current,
                               extras: selected
-                                ? newBooking.extras.filter((e) => e !== extra)
-                                : [...newBooking.extras, extra],
-                            })
+                                ? current.extras.filter((e) => e !== extra)
+                                : [...current.extras, extra],
+                            }))
                           }
                           className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
                             selected ? "border-primary bg-primary/5" : "hover:bg-muted"
@@ -1203,7 +1214,27 @@ export default function ReservationsPage() {
                           <span className="font-medium">{newBooking.extras.map((extra) => extraLabels[extra] ?? extra).join(", ")}</span>
                         </div>
                       )}
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">{t("res.dailyRate")}</label>
+                        <Input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={newBooking.dailyRateOverride}
+                          onChange={(e) => setNewBooking((current) => ({ ...current, dailyRateOverride: e.target.value }))}
+                          placeholder={selectedVehicle ? String(selectedVehicle.dailyRate) : ""}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {newBooking.dailyRateOverride.trim()
+                            ? t("booking.customRateHelp")
+                            : t("booking.defaultRateHelp")}
+                        </p>
+                      </div>
                       <Separator />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{t("res.dailyRate")}</span>
+                        <span className="font-medium">&euro;{effectiveDailyRate}</span>
+                      </div>
                       <div className="flex justify-between text-sm font-bold">
                         <span>{t("common.total")}</span>
                         <span className="text-primary">&euro;{totalCost}</span>

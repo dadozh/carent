@@ -241,6 +241,26 @@ describe("rental-db — reservations", () => {
     ).toThrow("Unsupported reservation extra: GPS");
   });
 
+  it("reservation can override daily rate without changing vehicle pricing", async () => {
+    const { createReservation, createCustomer } = await getRentalDb();
+    const { createVehicle, getVehicleById } = await getVehicleDb();
+
+    const vehicle = createVehicle(vehicleInput({ plate: "RATE-1", dailyRate: 35 }), T1);
+    const customer = createCustomer(
+      customerInput({ email: "rate@example.com", licenseNumber: "LIC-RATE" }),
+      T1
+    );
+
+    const reservation = createReservation({
+      ...reservationInput(customer.id, vehicle.id),
+      dailyRate: 49,
+    }, T1);
+
+    expect(reservation.dailyRate).toBe(49);
+    expect(reservation.totalCost).toBe(196);
+    expect(getVehicleById(vehicle.id, T1)?.dailyRate).toBe(35);
+  });
+
   it("public booking creates a pending reservation in the correct tenant", async () => {
     const { createPublicReservation, listReservations } = await getRentalDb();
     const { vehicle } = await seedForTenant(T1, "PUB-T1");
