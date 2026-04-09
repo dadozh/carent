@@ -26,7 +26,7 @@ export default async function AdminLayout({
             userRole={session.role}
             isImpersonating={session.isImpersonating}
           />
-          <main className="flex-1 flex flex-col overflow-auto bg-muted/30 p-4 pb-20 lg:p-6 lg:pb-6">{children}</main>
+          <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden bg-muted/30 p-4 pb-20 lg:p-6 lg:pb-6">{children}</main>
         </div>
         <MobileBottomNav />
       </div>

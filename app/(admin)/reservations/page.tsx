@@ -210,6 +210,7 @@ export default function ReservationsPage() {
   const [uploadingReturnPhotos, setUploadingReturnPhotos] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [startingRental, setStartingRental] = useState(false);
+  const [startRentalError, setStartRentalError] = useState("");
   const [paying, setPaying] = useState(false);
   const [currentTime] = useState(() => Date.now());
   const [newBooking, setNewBooking] = useState(initialBooking);
@@ -333,7 +334,7 @@ export default function ReservationsPage() {
       if (filterDates.startDate) params.set("dateFrom", filterDates.startDate);
       if (filterDates.endDate) params.set("dateTo", filterDates.endDate);
       if (overdueOnly) params.set("overdue", "1");
-      params.set("limit", "250");
+      params.set("limit", "50");
 
       fetch(`/api/reservations?${params.toString()}`, {
         cache: "no-store",
@@ -885,12 +886,14 @@ export default function ReservationsPage() {
   async function handleStartRental() {
     if (!selectedReservation) return;
     setStartingRental(true);
+    setStartRentalError("");
     try {
       const updatedReservation = await startRental(selectedReservation.id);
       setSelectedReservation(updatedReservation);
       setReservationsReloadKey((current) => current + 1);
     } catch (error) {
       console.error(error);
+      setStartRentalError(error instanceof Error ? error.message : t("res.startRentalFailed"));
     } finally {
       setStartingRental(false);
     }
@@ -899,7 +902,7 @@ export default function ReservationsPage() {
   const mobileDetail = showNewBooking || !!selectedReservation;
 
   return (
-    <div className={mobileDetail ? "flex flex-col flex-1 min-h-0 -mx-4 -mt-4 -mb-20 lg:mx-0 lg:mt-0 lg:mb-0 lg:block lg:space-y-6" : "space-y-6"}>
+    <div className={mobileDetail ? "flex flex-col flex-1 min-h-0 -mx-4 -mt-4 -mb-20 overflow-x-hidden lg:mx-0 lg:mt-0 lg:mb-0 lg:overflow-x-visible lg:block lg:space-y-6" : "space-y-6"}>
       <div className={`flex items-center justify-between ${showNewBooking || selectedReservation ? "hidden lg:flex" : ""}`}>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("res.title")}</h1>
@@ -1053,7 +1056,7 @@ export default function ReservationsPage() {
                   <X className="h-4 w-4 text-muted-foreground" />
                 </button>
               </CardHeader>
-              <CardContent className="flex-1 overflow-y-auto min-h-0">
+              <CardContent className="flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable] pb-20 lg:pb-4">
                 <div className="flex items-center gap-1 mb-6">
                   {steps.map((step, i) => (
                     <div key={step.key} className="flex items-center gap-1">
@@ -1246,26 +1249,26 @@ export default function ReservationsPage() {
                 })()}
 
                 {bookingStep === "customer" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="min-w-0 space-y-4">
+                    <div className="grid min-w-0 grid-cols-2 gap-2">
                       <button
                         type="button"
                         disabled={customers.length === 0}
                         onClick={() => setCustomerMode("existing")}
-                        className={`rounded-lg border p-2 text-sm font-medium ${
+                        className={`min-w-0 rounded-lg border p-2 text-sm font-medium ${
                           customerMode === "existing" ? "border-primary bg-primary/5" : "hover:bg-muted"
                         } disabled:cursor-not-allowed disabled:opacity-50`}
                       >
-                        {t("booking.existingCustomer")}
+                        <span className="block truncate">{t("booking.existingCustomer")}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setCustomerMode("new")}
-                        className={`rounded-lg border p-2 text-sm font-medium ${
+                        className={`min-w-0 rounded-lg border p-2 text-sm font-medium ${
                           customerMode === "new" ? "border-primary bg-primary/5" : "hover:bg-muted"
                         }`}
                       >
-                        {t("booking.newCustomer")}
+                        <span className="block truncate">{t("booking.newCustomer")}</span>
                       </button>
                     </div>
 
@@ -1299,21 +1302,23 @@ export default function ReservationsPage() {
                           >
                             <User className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">
-                                {c.firstName} {c.lastName}
-                              </p>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {c.firstName} {c.lastName}
+                                </p>
+                                {c.blacklisted && (
+                                  <Badge variant="secondary" className="bg-destructive/10 text-destructive text-xs shrink-0">
+                                    {t("customers.blacklisted")}
+                                  </Badge>
+                                )}
+                                {c.verified && (
+                                  <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs shrink-0">
+                                    {t("booking.verified")}
+                                  </Badge>
+                                )}
+                              </div>
                               <p className="text-xs text-muted-foreground truncate">{c.email}</p>
                             </div>
-                            {c.blacklisted && (
-                              <Badge variant="secondary" className="bg-destructive/10 text-destructive text-xs">
-                                {t("customers.blacklisted")}
-                              </Badge>
-                            )}
-                            {c.verified && (
-                              <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-                                {t("booking.verified")}
-                              </Badge>
-                            )}
                           </button>
                         ))}
                         </div>
@@ -1622,7 +1627,7 @@ export default function ReservationsPage() {
                   <X className="h-4 w-4 text-muted-foreground" />
                 </button>
               </CardHeader>
-              <CardContent className="space-y-4 flex-1 overflow-y-auto min-h-0">
+              <CardContent className="space-y-4 flex-1 overflow-y-auto min-h-0 [scrollbar-gutter:stable] pb-20 lg:pb-4">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">#{selectedReservation.id}</p>
                   <div className="flex items-center gap-2">
@@ -1833,14 +1838,19 @@ export default function ReservationsPage() {
                   <>
                     <Separator />
                     {selectedReservation.status === "confirmed" && canStartRental && (
-                      <Button
-                        className="w-full"
-                        disabled={startingRental}
-                        onClick={handleStartRental}
-                      >
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        {startingRental ? t("res.startingRental") : t("res.startRental")}
-                      </Button>
+                      <>
+                        <Button
+                          className="w-full"
+                          disabled={startingRental}
+                          onClick={handleStartRental}
+                        >
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          {startingRental ? t("res.startingRental") : t("res.startRental")}
+                        </Button>
+                        {startRentalError && (
+                          <p className="text-sm text-destructive">{startRentalError}</p>
+                        )}
+                      </>
                     )}
                     {selectedReservation.status === "active" && canCompleteReturn && (
                       <Button
