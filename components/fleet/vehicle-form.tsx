@@ -499,7 +499,7 @@ export function VehicleForm({ vehicle, onSave, onBack }: VehicleFormProps) {
                   )}
                   <button type="button"
                     onClick={() => isKept ? removeKept(index) : removeNew(index)}
-                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                   >
                     <X className="h-3 w-3" />
                   </button>
