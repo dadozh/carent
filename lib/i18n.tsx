@@ -5,7 +5,7 @@ import {
   useContext,
   useCallback,
   useEffect,
-  useSyncExternalStore,
+  useState,
   type ReactNode,
 } from "react";
 
@@ -1137,35 +1137,34 @@ const translations = {
 export type TranslationKey = keyof typeof translations.en;
 
 const LOCALE_STORAGE_KEY = "carent.locale";
+export const LOCALE_COOKIE_KEY = "carent.locale";
 const LOCALE_CHANGE_EVENT = "carent-locale-change";
-
-let memoryLocale: Locale = "en";
 
 function isLocale(value: string | null): value is Locale {
   return value === "en" || value === "sr";
 }
 
-function getLocaleSnapshot(): Locale {
-  if (typeof window === "undefined") return memoryLocale;
+function readBrowserLocale(fallbackLocale: Locale): Locale {
+  if (typeof window === "undefined") return fallbackLocale;
 
   try {
     const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-    return isLocale(storedLocale) ? storedLocale : memoryLocale;
+    if (isLocale(storedLocale)) return storedLocale;
+
+    const cookieLocale = window.document.cookie
+      .split("; ")
+      .find((entry) => entry.startsWith(`${LOCALE_COOKIE_KEY}=`))
+      ?.split("=")[1] ?? null;
+
+    if (isLocale(cookieLocale)) return cookieLocale;
+
+    const documentLocale = window.document.documentElement.lang;
+    if (isLocale(documentLocale)) return documentLocale;
+
+    return fallbackLocale;
   } catch {
-    return memoryLocale;
+    return fallbackLocale;
   }
-}
-
-function subscribeToLocaleChange(onStoreChange: () => void) {
-  if (typeof window === "undefined") return () => {};
-
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(LOCALE_CHANGE_EVENT, onStoreChange);
-
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(LOCALE_CHANGE_EVENT, onStoreChange);
-  };
 }
 
 interface I18nContextType {
@@ -1176,23 +1175,54 @@ interface I18nContextType {
 
 const I18nContext = createContext<I18nContextType | null>(null);
 
-export function I18nProvider({ children }: { children: ReactNode }) {
-  const locale = useSyncExternalStore<Locale>(
-    subscribeToLocaleChange,
-    getLocaleSnapshot,
-    () => "en"
-  );
+export function I18nProvider({
+  children,
+  initialLocale = "en",
+}: {
+  children: ReactNode;
+  initialLocale?: Locale;
+}) {
+  const [locale, setLocaleState] = useState<Locale>(initialLocale);
+
+  useEffect(() => {
+    const handleLocaleChange = () => {
+      setLocaleState((currentLocale) => readBrowserLocale(currentLocale));
+    };
+
+    handleLocaleChange();
+    window.addEventListener("storage", handleLocaleChange);
+    window.addEventListener(LOCALE_CHANGE_EVENT, handleLocaleChange);
+
+    return () => {
+      window.removeEventListener("storage", handleLocaleChange);
+      window.removeEventListener(LOCALE_CHANGE_EVENT, handleLocaleChange);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = locale;
+
+    try {
+      const cookieValue = window.document.cookie
+        .split("; ")
+        .find((entry) => entry.startsWith(`${LOCALE_COOKIE_KEY}=`))
+        ?.split("=")[1];
+
+      if (cookieValue !== locale) {
+        window.document.cookie = `${LOCALE_COOKIE_KEY}=${locale}; path=/; max-age=31536000; samesite=lax`;
+      }
+    } catch {
+      // Locale should still work if cookie access is unavailable.
+    }
   }, [locale]);
 
   const setLocale = useCallback((nextLocale: Locale) => {
-    memoryLocale = nextLocale;
+    setLocaleState(nextLocale);
     document.documentElement.lang = nextLocale;
 
     try {
       window.localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale);
+      window.document.cookie = `${LOCALE_COOKIE_KEY}=${nextLocale}; path=/; max-age=31536000; samesite=lax`;
     } catch {
       // Locale switching should still work when storage is unavailable.
     }

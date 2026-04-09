@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { cookies } from "next/headers";
 import "./globals.css";
-import { I18nProvider } from "@/lib/i18n";
+import { I18nProvider, LOCALE_COOKIE_KEY, type Locale } from "@/lib/i18n";
 
 const plusJakarta = localFont({
   variable: "--font-geist-sans",
@@ -28,18 +29,25 @@ export const metadata: Metadata = {
   description: "Rent-a-car management platform",
 };
 
-export default function RootLayout({
+function getInitialLocale(cookieValue: string | undefined): Locale {
+  return cookieValue === "sr" ? "sr" : "en";
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const initialLocale = getInitialLocale(cookieStore.get(LOCALE_COOKIE_KEY)?.value);
+
   return (
     <html
-      lang="en"
+      lang={initialLocale}
       className={`${plusJakarta.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body>
-        <I18nProvider>{children}</I18nProvider>
+        <I18nProvider initialLocale={initialLocale}>{children}</I18nProvider>
       </body>
     </html>
   );
