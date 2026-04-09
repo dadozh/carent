@@ -9,7 +9,7 @@ export default async function SettingsUsersPage() {
   if (!session) redirect("/login");
   if (!can(session.role, "manageUsers")) redirect("/");
 
-  const users = listUsersByTenant(session.tenantId, { includeInactive: true });
+  const users = listUsersByTenant(session.tenantId, { includeInactive: true, includeSuperAdmin: session.role === "super_admin" });
   const activeTenantAdmins = countActiveUsersByRole(session.tenantId, "tenant_admin");
 
   return <SettingsUsersPageClient users={users} currentUserId={session.userId} activeTenantAdmins={activeTenantAdmins} />;

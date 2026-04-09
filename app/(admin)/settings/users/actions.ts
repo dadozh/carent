@@ -55,6 +55,7 @@ function ensureUserCanBeModified(
 ) {
   const user = getUserByIdForTenant(targetUserId, tenantId, { includeInactive: true });
   if (!user) throw new Error("settings.users.error.notFound");
+  if (user.role === "super_admin") throw new Error("settings.users.error.notFound");
   if (user.id === actingUserId) throw new Error("settings.users.error.selfChange");
   return user;
 }

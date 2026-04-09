@@ -440,12 +440,14 @@ export function listTenantsWithStats(): TenantWithStats[] {
 
 export function listUsersByTenant(
   tenantId: string,
-  options?: { includeInactive?: boolean }
+  options?: { includeInactive?: boolean; includeSuperAdmin?: boolean }
 ): User[] {
   const includeInactive = options?.includeInactive ?? true;
+  const includeSuperAdmin = options?.includeSuperAdmin ?? false;
+  const roleFilter = includeSuperAdmin ? "" : " AND role != 'super_admin'";
   const query = includeInactive
-    ? "SELECT * FROM users WHERE tenant_id = ? ORDER BY active DESC, role, name"
-    : "SELECT * FROM users WHERE tenant_id = ? AND active = 1 ORDER BY role, name";
+    ? `SELECT * FROM users WHERE tenant_id = ?${roleFilter} ORDER BY active DESC, role, name`
+    : `SELECT * FROM users WHERE tenant_id = ? AND active = 1${roleFilter} ORDER BY role, name`;
 
   return getDb().prepare(query).all(tenantId) as User[];
 }
