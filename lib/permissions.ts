@@ -9,6 +9,7 @@ import type { UserRole } from "@/lib/auth-db";
  * swapVehicle       — swap vehicle mid-rental
  * extendReservation — extend the return date of an active reservation
  * completeReturn    — complete a vehicle return (closes rental, updates vehicle)
+ * markAsPaid        — mark a reservation as paid (cash)
  * manageFleet       — add / edit / delete vehicles
  * manageUsers       — invite, deactivate, change roles (tenant admin scope)
  * manageSettings    — edit tenant settings like booking locations and extras
@@ -21,6 +22,7 @@ export type Action =
   | "swapVehicle"
   | "extendReservation"
   | "completeReturn"
+  | "markAsPaid"
   | "manageFleet"
   | "manageUsers"
   | "manageSettings"
@@ -42,6 +44,7 @@ const REQUIRED_ROLE: Record<Action, UserRole> = {
   swapVehicle:        "manager",
   extendReservation:  "agent",
   completeReturn:     "agent",
+  markAsPaid:         "agent",
   manageFleet:        "manager",
   manageUsers:        "tenant_admin",
   manageSettings:     "tenant_admin",

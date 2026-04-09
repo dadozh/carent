@@ -125,12 +125,14 @@ export default function ReservationsPage() {
     swapVehicle,
     extendReservation,
     completeReturn,
+    markAsPaid,
   } = useReservations({ loadReservations: false });
   const canWrite = useCan("writeReservation");
   const canCancel = useCan("cancelReservation");
   const canSwap = useCan("swapVehicle");
   const canExtend = useCan("extendReservation");
   const canCompleteReturn = useCan("completeReturn");
+  const canMarkAsPaid = useCan("markAsPaid");
   const newCustomerFileRef = useRef<HTMLInputElement>(null);
   const newReservationFileRef = useRef<HTMLInputElement>(null);
   const customerDetailFileRef = useRef<HTMLInputElement>(null);
@@ -181,6 +183,7 @@ export default function ReservationsPage() {
   const [returnExtraCharges, setReturnExtraCharges] = useState("");
   const [returnNotes, setReturnNotes] = useState("");
   const [completing, setCompleting] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [currentTime] = useState(() => Date.now());
   const [newBooking, setNewBooking] = useState(initialBooking);
   const [newCustomer, setNewCustomer] = useState(initialCustomer);
@@ -727,6 +730,20 @@ export default function ReservationsPage() {
     }
   }
 
+  async function handleMarkAsPaid() {
+    if (!selectedReservation) return;
+    setPaying(true);
+    try {
+      const updatedReservation = await markAsPaid(selectedReservation.id);
+      setSelectedReservation(updatedReservation);
+      setReservationsReloadKey((current) => current + 1);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setPaying(false);
+    }
+  }
+
   const mobileDetail = showNewBooking || !!selectedReservation;
 
   return (
@@ -824,7 +841,12 @@ export default function ReservationsPage() {
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-bold">&euro;{reservation.totalCost}</p>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <p className="text-sm font-bold">&euro;{reservation.totalCost}</p>
+                      {reservation.payment && (
+                        <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {reservation.extras.length > 0
                         ? reservation.extras.map((extra) => extraLabels[extra] ?? extra).join(", ")
@@ -1578,6 +1600,21 @@ export default function ReservationsPage() {
                   {t("res.created")}: {formatDate(selectedReservation.createdAt)}
                 </p>
 
+                {selectedReservation.status !== "cancelled" && !selectedReservation.payment && canMarkAsPaid && (
+                  <>
+                    <Separator />
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={paying}
+                      onClick={handleMarkAsPaid}
+                    >
+                      <Check className="mr-2 h-4 w-4" />
+                      {paying ? t("res.markingAsPaid") : t("res.markAsPaid")}
+                    </Button>
+                  </>
+                )}
+
                 {["pending", "confirmed", "active"].includes(selectedReservation.status) && (canCancel || canSwap || canExtend || canCompleteReturn) && (
                   <>
                     <Separator />
@@ -1742,6 +1779,25 @@ export default function ReservationsPage() {
                     </div>
                   </>
                 )}
+
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">{t("res.payment")}</p>
+                  {selectedReservation.payment ? (
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                        <Check className="mr-1 h-3 w-3" />
+                        {t("res.paid")}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {t("res.paymentMethodCash")} · {formatDate(selectedReservation.payment.paidAt.slice(0, 10))}
+                      </span>
+                    </div>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      {t("res.unpaid")}
+                    </Badge>
+                  )}
+                </div>
 
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">{t("booking.contractLanguage")}</p>

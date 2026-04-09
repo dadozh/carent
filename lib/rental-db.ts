@@ -75,6 +75,10 @@ export type ReturnChecklistInput = {
   returnPhotos?: string[];
 };
 
+export type MarkReservationPaidInput = {
+  method: "cash";
+};
+
 export interface ReservationListFilters {
   search?: string;
   status?: string;
@@ -513,6 +517,27 @@ export function completeReservationReturn(id: string, input: ReturnChecklistInpu
   // Update vehicle: mileage + status (maintenance if damaged, available otherwise).
   const vehicleStatus = input.hasDamage ? "maintenance" as const : "available" as const;
   updateVehicle(reservation.vehicleId, { mileage: input.returnMileage, status: vehicleStatus }, tenantId);
+
+  return updatedReservation;
+}
+
+export function markReservationPaid(id: string, input: MarkReservationPaidInput, tenantId: string): Reservation {
+  const reservation = getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status === "cancelled") throw new Error("Cannot mark a cancelled reservation as paid");
+  if (reservation.payment) throw new Error("Reservation is already marked as paid");
+
+  const updatedReservation: Reservation = {
+    ...reservation,
+    payment: {
+      paidAt: new Date().toISOString(),
+      method: input.method,
+    },
+  };
+
+  getDb()
+    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedReservation), id, tenantId);
 
   return updatedReservation;
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { statusColors, type Reservation } from "@/lib/mock-data";
-import { Car, CalendarDays, TrendingUp, Wrench } from "lucide-react";
+import { Car, CalendarDays, TrendingUp, Wrench, AlertCircle, Clock } from "lucide-react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { useVehicles } from "@/lib/use-vehicles";
@@ -35,6 +35,20 @@ export default function DashboardPage() {
     monthlyRevenue[0]
   );
 
+  const now = Date.now();
+  const overdueReturns = reservations
+    .filter((r) => {
+      if (r.status !== "active") return false;
+      const returnTs = new Date(`${r.endDate}T${r.returnTime ?? "00:00"}`).getTime();
+      return !Number.isNaN(returnTs) && returnTs < now;
+    })
+    .map((r) => {
+      const returnTs = new Date(`${r.endDate}T${r.returnTime ?? "00:00"}`).getTime();
+      const overdueMs = now - returnTs;
+      return { reservation: r, overdueMs };
+    })
+    .sort((a, b) => b.overdueMs - a.overdueMs);
+
   const kpis = [
     { label: t("dashboard.totalVehicles"), value: totalVehicles, icon: Car, color: "text-blue-600" },
     { label: t("dashboard.activeRentals"), value: activeRentals, icon: CalendarDays, color: "text-green-600" },
@@ -64,6 +78,41 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {overdueReturns.length > 0 && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-destructive">
+              <AlertCircle className="h-5 w-5" />
+              {t("dashboard.overdueReturns")} ({overdueReturns.length})
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">{t("dashboard.overdueReturnsDesc")}</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {overdueReturns.map(({ reservation, overdueMs }) => (
+                <Link
+                  key={reservation.id}
+                  href="/reservations"
+                  className="flex items-center justify-between rounded-lg border border-destructive/20 bg-background p-3 hover:bg-muted/50 transition-colors"
+                >
+                  <div>
+                    <p className="text-sm font-medium">{reservation.customerName}</p>
+                    <p className="text-xs text-muted-foreground">{reservation.vehicleName} · {reservation.vehiclePlate}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="flex items-center gap-1 text-xs font-medium text-destructive">
+                      <Clock className="h-3 w-3" />
+                      {formatOverdue(overdueMs)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.overdueBy")}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="lg:col-span-2">
@@ -207,6 +256,14 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+}
+
+function formatOverdue(ms: number) {
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
 function formatMoney(value: number) {

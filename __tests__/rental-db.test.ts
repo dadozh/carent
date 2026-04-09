@@ -638,3 +638,112 @@ describe("rental-db — return checklist", () => {
     ).toThrow("Only active reservations can be returned");
   });
 });
+
+describe("rental-db — payment tracking", () => {
+  beforeEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  afterEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  async function seedReservation(tenantId: string, plate: string, status: "confirmed" | "active" | "completed" = "active") {
+    const { createVehicle } = await getVehicleDb();
+    const { createCustomer, createReservation, completeReservationReturn } = await getRentalDb();
+    const vehicle = createVehicle(vehicleInput({ plate }), tenantId);
+    const customer = createCustomer(customerInput({ email: `${plate}@pay.com`, licenseNumber: `LIC-PAY-${plate}` }), tenantId);
+    const reservation = createReservation({ ...reservationInput(customer.id, vehicle.id), status: "active" as const }, tenantId);
+    if (status === "completed") {
+      completeReservationReturn(reservation.id, { returnMileage: 11000, fuelLevel: "full", hasDamage: false }, tenantId);
+      return { vehicle, customer, reservation: { ...reservation, status: "completed" as const } };
+    }
+    if (status === "confirmed") {
+      // Re-create with confirmed status
+      const { __closeDb: closeR } = await getRentalDb();
+      closeR();
+      const { __closeDb: closeV } = await getVehicleDb();
+      closeV();
+      const { createVehicle: cv2 } = await getVehicleDb();
+      const { createCustomer: cc2, createReservation: cr2 } = await getRentalDb();
+      const v2 = cv2(vehicleInput({ plate: `${plate}B` }), tenantId);
+      const c2 = cc2(customerInput({ email: `${plate}b@pay.com`, licenseNumber: `LIC-PAY-${plate}B` }), tenantId);
+      const r2 = cr2({ ...reservationInput(c2.id, v2.id), status: "confirmed" as const }, tenantId);
+      return { vehicle: v2, customer: c2, reservation: r2 };
+    }
+    return { vehicle, customer, reservation };
+  }
+
+  it("marks an active reservation as paid", async () => {
+    const { markReservationPaid, getReservationById } = await getRentalDb();
+    const { reservation } = await seedReservation(T1, "PAY-001");
+
+    const updated = markReservationPaid(reservation.id, { method: "cash" }, T1);
+
+    expect(updated.payment).toBeDefined();
+    expect(updated.payment?.method).toBe("cash");
+    expect(updated.payment?.paidAt).toBeTruthy();
+    expect(getReservationById(reservation.id, T1)?.payment?.method).toBe("cash");
+  });
+
+  it("stores paidAt as an ISO timestamp", async () => {
+    const { markReservationPaid } = await getRentalDb();
+    const before = new Date().toISOString();
+    const { reservation } = await seedReservation(T1, "PAY-002");
+
+    const updated = markReservationPaid(reservation.id, { method: "cash" }, T1);
+    const after = new Date().toISOString();
+
+    expect(updated.payment?.paidAt >= before).toBe(true);
+    expect(updated.payment?.paidAt <= after).toBe(true);
+  });
+
+  it("marks a completed reservation as paid", async () => {
+    const { markReservationPaid, getReservationById } = await getRentalDb();
+    const { reservation } = await seedReservation(T1, "PAY-003", "completed");
+
+    const updated = markReservationPaid(reservation.id, { method: "cash" }, T1);
+
+    expect(updated.payment?.method).toBe("cash");
+    expect(getReservationById(reservation.id, T1)?.payment).toBeDefined();
+  });
+
+  it("rejects marking a cancelled reservation as paid", async () => {
+    const { markReservationPaid, updateReservationStatus } = await getRentalDb();
+    const { reservation } = await seedReservation(T1, "PAY-004");
+    updateReservationStatus(reservation.id, { status: "cancelled" }, T1);
+
+    expect(() =>
+      markReservationPaid(reservation.id, { method: "cash" }, T1)
+    ).toThrow("Cannot mark a cancelled reservation as paid");
+  });
+
+  it("rejects marking an already-paid reservation as paid again", async () => {
+    const { markReservationPaid } = await getRentalDb();
+    const { reservation } = await seedReservation(T1, "PAY-005");
+    markReservationPaid(reservation.id, { method: "cash" }, T1);
+
+    expect(() =>
+      markReservationPaid(reservation.id, { method: "cash" }, T1)
+    ).toThrow("Reservation is already marked as paid");
+  });
+
+  it("is isolated across tenants", async () => {
+    const { createVehicle: cvA } = await getVehicleDb();
+    const { createCustomer: ccA, createReservation: crA, markReservationPaid } = await getRentalDb();
+    const vA = cvA(vehicleInput({ plate: "PAY-T1" }), T1);
+    const cA = ccA(customerInput({ email: "t1pay@example.com", licenseNumber: "LIC-T1PAY" }), T1);
+    const rA = crA({ ...reservationInput(cA.id, vA.id), status: "active" as const }, T1);
+
+    // Trying to pay T1's reservation from T2 should fail (not found)
+    expect(() =>
+      markReservationPaid(rA.id, { method: "cash" }, T2)
+    ).toThrow("Reservation not found");
+  });
+});

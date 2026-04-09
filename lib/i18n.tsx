@@ -111,6 +111,10 @@ const translations = {
     "dashboard.reservations": "Reservations",
     "dashboard.income": "Income",
     "dashboard.month": "Month",
+    "dashboard.overdueReturns": "Overdue Returns",
+    "dashboard.overdueReturnsDesc": "Active rentals past their return date",
+    "dashboard.overdueBy": "overdue by",
+    "dashboard.viewReservation": "View",
 
     // Fleet
     "fleet.title": "Fleet Management",
@@ -333,6 +337,17 @@ const translations = {
     "res.returnedMileage": "Return mileage",
     "res.returnedAt": "Returned at",
 
+    // Payment
+    "res.payment": "Payment",
+    "res.markAsPaid": "Mark as paid",
+    "res.markingAsPaid": "Processing...",
+    "res.paid": "Paid",
+    "res.unpaid": "Unpaid",
+    "res.paymentMethod": "Method",
+    "res.paymentMethodCash": "Cash",
+    "res.paidAt": "Paid at",
+    "res.alreadyPaid": "Already paid",
+
     // Booking form
     "booking.datesLocation": "Dates & Location",
     "booking.selectVehicle": "Select Vehicle",
@@ -518,6 +533,10 @@ const translations = {
     "dashboard.reservations": "Rezervacije",
     "dashboard.income": "Prihod",
     "dashboard.month": "Mesec",
+    "dashboard.overdueReturns": "Zakašnjeli povratak",
+    "dashboard.overdueReturnsDesc": "Aktivni najam prošao rok vraćanja",
+    "dashboard.overdueBy": "kasni",
+    "dashboard.viewReservation": "Pogledaj",
 
     // Fleet
     "fleet.title": "Upravljanje voznim parkom",
@@ -739,6 +758,17 @@ const translations = {
     "res.returnChecklistSection": "Prijemni pregled",
     "res.returnedMileage": "Kilometraža pri povratku",
     "res.returnedAt": "Vraćeno",
+
+    // Payment
+    "res.payment": "Plaćanje",
+    "res.markAsPaid": "Označi kao plaćeno",
+    "res.markingAsPaid": "Obrada...",
+    "res.paid": "Plaćeno",
+    "res.unpaid": "Nije plaćeno",
+    "res.paymentMethod": "Metoda",
+    "res.paymentMethodCash": "Gotovina",
+    "res.paidAt": "Plaćeno",
+    "res.alreadyPaid": "Već plaćeno",
 
     // Booking form
     "booking.datesLocation": "Datumi i lokacija",

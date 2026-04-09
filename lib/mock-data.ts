@@ -106,6 +106,11 @@ export interface Reservation {
   }>;
   // Return checklist (completed reservations)
   returnChecklist?: ReturnChecklist;
+  // Payment tracking (cash only for now)
+  payment?: {
+    paidAt: string;
+    method: "cash";
+  };
 }
 
 export const vehicles: Vehicle[] = [];

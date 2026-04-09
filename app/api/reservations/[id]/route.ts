@@ -1,4 +1,4 @@
-import { updateReservationImages, updateReservationStatus, swapReservationVehicle, extendReservation, completeReservationReturn } from "@/lib/rental-db";
+import { updateReservationImages, updateReservationStatus, swapReservationVehicle, extendReservation, completeReservationReturn, markReservationPaid } from "@/lib/rental-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 
@@ -25,6 +25,9 @@ export async function PATCH(
     } else if (data.returnChecklist) {
       assertCan(role, "completeReturn");
       reservation = completeReservationReturn(id, data.returnChecklist, tenantId);
+    } else if (data.payment) {
+      assertCan(role, "markAsPaid");
+      reservation = markReservationPaid(id, data.payment, tenantId);
     } else {
       assertCan(role, "cancelReservation");
       reservation = updateReservationStatus(id, data, tenantId);
