@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { GenerateTenantInvoiceForm, TenantBillingSettingsForm } from "@/components/platform/tenant-billing-form";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   getTenantBillingSettings,
   getTenantByIdIncludingInactive,
+  getTenantFeatureOverrides,
   listTenantInvoices,
 } from "@/lib/auth-db";
 import { formatDate } from "@/lib/date-format";
 import { countBillableVehiclesForMonth } from "@/lib/vehicle-db";
+import { PLAN_FEATURE_LIST, canUsePlanFeature, type FeatureOverrides } from "@/lib/plan-features";
+import { setTenantFeatureOverrideAction } from "@/app/platform/actions";
 import { notFound } from "next/navigation";
 
 function formatMoney(value: number) {
@@ -51,6 +55,7 @@ export default async function TenantBillingPage({
 
   const billingSettings = getTenantBillingSettings(tenantId);
   const invoices = listTenantInvoices(tenantId);
+  const featureOverrides = getTenantFeatureOverrides(tenantId) as FeatureOverrides;
   const currentBillingMonth = getCurrentBillingMonth();
   const projectedVehicleCount = countBillableVehiclesForMonth(tenantId, currentBillingMonth);
   const projectedMonthlyTotal =
@@ -126,6 +131,58 @@ export default async function TenantBillingPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Feature overrides</CardTitle>
+          <CardDescription>
+            Override individual features on or off regardless of plan. Use this for custom deals or testing.
+            "Plan default" removes the override and falls back to what the plan normally grants.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y">
+            {PLAN_FEATURE_LIST.map(({ feature, label, description }) => {
+              const override = featureOverrides[feature];
+              const planDefault = canUsePlanFeature(tenant.plan, feature);
+              const effective = override !== undefined ? override : planDefault;
+              const currentValue = override === true ? "on" : override === false ? "off" : "plan";
+              return (
+                <div key={feature} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{label}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${effective ? "bg-green-100 text-green-800" : "bg-muted text-muted-foreground"}`}>
+                        {effective ? "Enabled" : "Disabled"}
+                      </span>
+                      {override !== undefined && (
+                        <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
+                          Override active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{description}</p>
+                  </div>
+                  <form action={setTenantFeatureOverrideAction} className="flex shrink-0 items-center gap-2">
+                    <input type="hidden" name="tenantId" value={tenantId} />
+                    <input type="hidden" name="feature" value={feature} />
+                    <select
+                      name="value"
+                      defaultValue={currentValue}
+                      className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                    >
+                      <option value="plan">Plan default ({planDefault ? "on" : "off"})</option>
+                      <option value="on">Force on</option>
+                      <option value="off">Force off</option>
+                    </select>
+                    <Button type="submit" variant="outline" size="sm">Apply</Button>
+                  </form>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

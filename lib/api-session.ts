@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
-import { getTenantById, getUserById } from "@/lib/auth-db";
+import { getTenantById, getTenantFeatureOverrides, getUserById } from "@/lib/auth-db";
+import type { FeatureOverrides } from "@/lib/plan-features";
 
 export interface ApiSession {
   tenantId: string;
@@ -7,11 +8,12 @@ export interface ApiSession {
   userName: string;
   role: string;
   plan: string;
+  featureOverrides: FeatureOverrides;
 }
 
 /**
- * Extracts the session (tenantId, userId, role, plan) from the Next.js request headers
- * that the middleware populates from the JWT.
+ * Extracts the session (tenantId, userId, role, plan, featureOverrides) from the
+ * Next.js request headers that the middleware populates from the JWT.
  *
  * Throws an error with message "Unauthorized" if any field is missing.
  */
@@ -33,5 +35,12 @@ export async function getApiSession(): Promise<ApiSession> {
   const tenant = getTenantById(effectiveTenantId);
   if (!tenant) throw new Error("Unauthorized");
 
-  return { tenantId: effectiveTenantId, userId: user.id, userName: user.name, role: user.role, plan: tenant.plan };
+  return {
+    tenantId: effectiveTenantId,
+    userId: user.id,
+    userName: user.name,
+    role: user.role,
+    plan: tenant.plan,
+    featureOverrides: getTenantFeatureOverrides(effectiveTenantId) as FeatureOverrides,
+  };
 }

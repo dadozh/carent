@@ -127,6 +127,13 @@ function getDb(): Database.Database {
       created_at                 TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(tenant_id, billing_month)
     );
+
+    CREATE TABLE IF NOT EXISTS tenant_feature_overrides (
+      tenant_id TEXT NOT NULL REFERENCES tenants(id),
+      feature   TEXT NOT NULL,
+      enabled   INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      PRIMARY KEY (tenant_id, feature)
+    );
   `);
   seedDefaultTenant();
   return db;
@@ -553,6 +560,37 @@ export function setUserActive(id: string, tenantId: string, active: boolean): Us
 export function setTenantActive(id: string, active: boolean): Tenant | null {
   const result = getDb().prepare("UPDATE tenants SET active = ? WHERE id = ?").run(active ? 1 : 0, id);
   return result.changes ? getTenantByIdIncludingInactive(id) : null;
+}
+
+/**
+ * Returns feature overrides for a tenant as a plain object.
+ * Only features with an explicit override are present.
+ */
+export function getTenantFeatureOverrides(tenantId: string): Partial<Record<string, boolean>> {
+  const rows = getDb()
+    .prepare("SELECT feature, enabled FROM tenant_feature_overrides WHERE tenant_id = ?")
+    .all(tenantId) as { feature: string; enabled: number }[];
+  return Object.fromEntries(rows.map((r) => [r.feature, r.enabled === 1]));
+}
+
+/**
+ * Set or remove a feature override for a tenant.
+ * Pass `null` to remove the override (fall back to plan default).
+ */
+export function setTenantFeatureOverride(tenantId: string, feature: string, enabled: boolean | null): void {
+  if (enabled === null) {
+    getDb()
+      .prepare("DELETE FROM tenant_feature_overrides WHERE tenant_id = ? AND feature = ?")
+      .run(tenantId, feature);
+  } else {
+    getDb()
+      .prepare(`
+        INSERT INTO tenant_feature_overrides (tenant_id, feature, enabled)
+        VALUES (?, ?, ?)
+        ON CONFLICT (tenant_id, feature) DO UPDATE SET enabled = excluded.enabled
+      `)
+      .run(tenantId, feature, enabled ? 1 : 0);
+  }
 }
 
 export function updateTenantPlan(id: string, plan: string): Tenant {

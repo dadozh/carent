@@ -1,5 +1,5 @@
 import { PublicBookingPage } from "@/components/public/booking-page";
-import { getTenantBySlug, getTenantSettings } from "@/lib/auth-db";
+import { getTenantBySlug, getTenantFeatureOverrides, getTenantSettings } from "@/lib/auth-db";
 import { canUsePlanFeature } from "@/lib/plan-features";
 import { notFound } from "next/navigation";
 
@@ -12,7 +12,8 @@ export default async function TenantBookingPage({
   const tenant = getTenantBySlug(tenantSlug);
 
   if (!tenant) notFound();
-  if (!canUsePlanFeature(tenant.plan, "publicBooking")) notFound();
+  const overrides = getTenantFeatureOverrides(tenant.id);
+  if (!canUsePlanFeature(tenant.plan, "publicBooking", overrides)) notFound();
 
   const settings = getTenantSettings(tenant.id);
 

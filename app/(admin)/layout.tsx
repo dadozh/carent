@@ -16,7 +16,7 @@ export default async function AdminLayout({
 
   return (
     <RoleProvider role={session.role}>
-    <PlanProvider plan={session.plan ?? "starter"}>
+    <PlanProvider plan={session.plan ?? "starter"} featureOverrides={session.featureOverrides ?? {}}>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">

@@ -7,9 +7,9 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { tenantId, role, plan } = await getApiSession();
+    const { tenantId, role, plan, featureOverrides } = await getApiSession();
     assertCan(role, "manageSettings");
-    assertPlanFeature(plan, "auditLog");
+    assertPlanFeature(plan, "auditLog", featureOverrides);
     const { searchParams } = new URL(request.url);
     const entityType = searchParams.get("entityType") as AuditEntityType | null;
     const limit = Number(searchParams.get("limit") ?? "");
