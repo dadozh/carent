@@ -25,7 +25,6 @@ Deferred features that would add significant value but are not required for an M
 ## Customer & Contract Management
 
 - **Signed contract tracking** — record whether a signed contract has been collected (digital or paper) and store a scan reference
-- **Customer blacklist / notes** — flag customers with a risk rating or internal notes visible to staff before confirming a booking
 - **Customer portal** — self-service area for customers to view their booking history (not a priority while back-office only)
 
 ---
@@ -41,7 +40,6 @@ Deferred features that would add significant value but are not required for an M
 
 - **Automated status transitions** — scheduler that moves `pending → confirmed` or flags overdue items without requiring manual staff action
 - **SQLite backup strategy** — periodic snapshots to object storage (S3-compatible) with configurable retention
-- **Audit log** — immutable log of who changed what and when (status changes, payment, swap, return checklist) for compliance and dispute resolution
 - **Role-based dashboard widgets** — show different widgets based on the logged-in user's role (e.g. agents see pending tasks, managers see revenue)
 
 ---
