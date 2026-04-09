@@ -280,6 +280,32 @@ async function patchMarkAsPaid(id: string): Promise<Reservation> {
   return data.reservation;
 }
 
+async function patchStartRental(id: string): Promise<Reservation> {
+  const response = await fetch(`/api/reservations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "active" }),
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const data = await response.json() as { error?: string };
+      throw new Error(data.error ?? `Failed to start rental: ${response.status}`);
+    }
+
+    const text = await response.text();
+    throw new Error(`Failed to start rental: ${response.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+  }
+
+  const data = await response.json() as { reservation: Reservation };
+  reservationsSnapshot = reservationsSnapshot.map((reservation) =>
+    reservation.id === data.reservation.id ? data.reservation : reservation
+  );
+  emitReservationsChange();
+  return data.reservation;
+}
+
 async function patchReservationImages(id: string, images: string[]): Promise<Reservation> {
   const response = await fetch(`/api/reservations/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -345,6 +371,7 @@ export function useReservations({ loadReservations = true }: UseReservationsOpti
   const swapVehicle = useCallback((id: string, swap: { toVehicleId: string; toVehicleName: string; toVehiclePlate: string; reason: string; reasonType: string; fromVehicleCondition?: string }) => patchVehicleSwap(id, swap), []);
   const extendReservation = useCallback((id: string, extension: { newEndDate: string; newReturnTime: string }) => patchExtendReservation(id, extension), []);
   const completeReturn = useCallback((id: string, returnChecklist: { returnMileage: number; fuelLevel: string; hasDamage: boolean; damageDescription?: string; extraCharges?: number; notes?: string; returnPhotos?: string[] }) => patchCompleteReturn(id, returnChecklist), []);
+  const startRental = useCallback((id: string) => patchStartRental(id), []);
   const markAsPaid = useCallback((id: string) => patchMarkAsPaid(id), []);
   const updateCustomerImages = useCallback((id: string, images: string[]) => patchCustomerImages(id, images), []);
   const updateReservationImages = useCallback((id: string, images: string[]) => patchReservationImages(id, images), []);
@@ -359,6 +386,7 @@ export function useReservations({ loadReservations = true }: UseReservationsOpti
     swapVehicle,
     extendReservation,
     completeReturn,
+    startRental,
     markAsPaid,
     updateCustomerImages,
     updateReservationImages,

@@ -55,6 +55,7 @@ import {
   ImagePlus,
   Upload,
   Wrench,
+  AlertCircle,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useVehicles } from "@/lib/use-vehicles";
@@ -63,9 +64,16 @@ import { useTenantSettings } from "@/lib/use-tenant-settings";
 import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
 import { uploadFiles } from "@/lib/storage";
+import {
+  getReservationOutstandingAmount,
+  getReservationPaidAmount,
+  getReservationPayments,
+  isReservationFullyPaid,
+} from "@/lib/reservation-payments";
 import Image from "next/image";
 import {
   formatDate,
+  formatDateTime,
   formatDateTimeRange,
   isoDateToEuropeanInput,
   normalizeEuropeanDateInput,
@@ -85,6 +93,13 @@ function normalizePhotoUrls(images: Array<string | null | undefined>) {
   return images
     .map((image) => image?.trim() ?? "")
     .filter((image): image is string => image.length > 0);
+}
+
+function isReservationOverdue(reservation: Reservation, referenceTime: number) {
+  if (reservation.status !== "active") return false;
+
+  const returnTs = new Date(`${reservation.endDate}T${reservation.returnTime ?? "00:00"}`).getTime();
+  return !Number.isNaN(returnTs) && returnTs < referenceTime;
 }
 
 const initialBooking = {
@@ -126,9 +141,11 @@ export default function ReservationsPage() {
     swapVehicle,
     extendReservation,
     completeReturn,
+    startRental,
     markAsPaid,
   } = useReservations({ loadReservations: false });
   const canWrite = useCan("writeReservation");
+  const canStartRental = useCan("startRental");
   const canCancel = useCan("cancelReservation");
   const canSwap = useCan("swapVehicle");
   const canExtend = useCan("extendReservation");
@@ -147,12 +164,16 @@ export default function ReservationsPage() {
   const [vehicleFilterTransmission, setVehicleFilterTransmission] = useState("");
   const [vehicleFilterCategory, setVehicleFilterCategory] = useState("");
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | "all">("all");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [blockingReservations, setBlockingReservations] = useState<Reservation[]>([]);
   const [reservationTotal, setReservationTotal] = useState(0);
   const [reservationsReloadKey, setReservationsReloadKey] = useState(0);
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  const [requestedReservationId, setRequestedReservationId] = useState<string | null>(null);
+  const [queryStateReady, setQueryStateReady] = useState(false);
   const [showNewBooking, setShowNewBooking] = useState(false);
+  const [showBlacklistedCustomerWarning, setShowBlacklistedCustomerWarning] = useState(false);
   const [bookingStep, setBookingStep] = useState<BookingStep>("dates");
   const [customerMode, setCustomerMode] = useState<CustomerMode>("existing");
   const [saving, setSaving] = useState(false);
@@ -188,6 +209,7 @@ export default function ReservationsPage() {
   const [returnPhotos, setReturnPhotos] = useState<string[]>([]);
   const [uploadingReturnPhotos, setUploadingReturnPhotos] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [startingRental, setStartingRental] = useState(false);
   const [paying, setPaying] = useState(false);
   const [currentTime] = useState(() => Date.now());
   const [newBooking, setNewBooking] = useState(initialBooking);
@@ -210,6 +232,9 @@ export default function ReservationsPage() {
   const selectedCustomer = customers.find((c) => c.id === newBooking.customerId);
   const selectedReservationCustomer = selectedReservation
     ? customers.find((c) => c.id === selectedReservation.customerId)
+    : null;
+  const selectedReservationVehicle = selectedReservation
+    ? vehicles.find((v) => v.id === selectedReservation.vehicleId)
     : null;
   const rentalDurationMs = getRentalDurationMs(
     newBooking.startDate,
@@ -283,6 +308,23 @@ export default function ReservationsPage() {
   }, [bookingLocations]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const overdue = ["1", "true"].includes((params.get("overdue") ?? "").toLowerCase());
+    const reservationId = params.get("reservationId");
+
+    if (overdue) {
+      setOverdueOnly(true);
+      setStatusFilter("active");
+    }
+
+    if (reservationId) {
+      setRequestedReservationId(reservationId);
+    }
+
+    setQueryStateReady(true);
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
       const params = new URLSearchParams();
@@ -290,6 +332,7 @@ export default function ReservationsPage() {
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (filterDates.startDate) params.set("dateFrom", filterDates.startDate);
       if (filterDates.endDate) params.set("dateTo", filterDates.endDate);
+      if (overdueOnly) params.set("overdue", "1");
       params.set("limit", "250");
 
       fetch(`/api/reservations?${params.toString()}`, {
@@ -314,7 +357,45 @@ export default function ReservationsPage() {
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [filterDates.endDate, filterDates.startDate, reservationsReloadKey, search, statusFilter]);
+  }, [filterDates.endDate, filterDates.startDate, overdueOnly, reservationsReloadKey, search, statusFilter]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!queryStateReady) return;
+
+    const params = new URLSearchParams(window.location.search);
+
+    if (search.trim()) params.set("search", search.trim());
+    else params.delete("search");
+
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    else params.delete("status");
+
+    if (filterDates.startDate) params.set("dateFrom", filterDates.startDate);
+    else params.delete("dateFrom");
+
+    if (filterDates.endDate) params.set("dateTo", filterDates.endDate);
+    else params.delete("dateTo");
+
+    if (overdueOnly) params.set("overdue", "1");
+    else params.delete("overdue");
+
+    if (requestedReservationId) params.set("reservationId", requestedReservationId);
+    else params.delete("reservationId");
+
+    const query = params.toString();
+    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+  }, [filterDates.endDate, filterDates.startDate, overdueOnly, queryStateReady, requestedReservationId, search, statusFilter]);
+
+  useEffect(() => {
+    if (!requestedReservationId || reservations.length === 0) return;
+
+    const reservation = reservations.find((item) => item.id === requestedReservationId);
+    if (!reservation) return;
+
+    setSelectedReservation(reservation);
+    setShowNewBooking(false);
+  }, [requestedReservationId, reservations]);
 
   useEffect(() => {
     if (!newBooking.startDate || !newBooking.endDate) {
@@ -412,6 +493,7 @@ export default function ReservationsPage() {
   function clearReservationFilters() {
     setSearch("");
     setStatusFilter("all");
+    setOverdueOnly(false);
     setFilterDates({ startDate: "", endDate: "" });
     setFilterDateInputs({ startDate: "", endDate: "" });
   }
@@ -419,6 +501,7 @@ export default function ReservationsPage() {
   function openNewBooking() {
     resetWizard();
     setSelectedReservation(null);
+    setRequestedReservationId(null);
     setShowNewBooking(true);
   }
 
@@ -554,7 +637,7 @@ export default function ReservationsPage() {
     return true;
   }
 
-  async function handleConfirmBooking() {
+  async function submitBooking() {
     if (!selectedVehicle || !vehicleIsBookable(selectedVehicle.id) || rentalDateError || !canContinue("customer")) return;
 
     setSaving(true);
@@ -601,6 +684,15 @@ export default function ReservationsPage() {
       console.error(error);
       setSaving(false);
     }
+  }
+
+  async function handleConfirmBooking() {
+    if (customerMode === "existing" && selectedCustomer?.blacklisted) {
+      setShowBlacklistedCustomerWarning(true);
+      return;
+    }
+
+    await submitBooking();
   }
 
   async function uploadImages(files: FileList | null, prefix: string) {
@@ -694,6 +786,12 @@ export default function ReservationsPage() {
 
   async function handleExtendReservation() {
     if (!selectedReservation || !extendIsoDate) return;
+    const clientError = getExtendValidationError();
+    if (clientError) {
+      setExtendError(clientError);
+      return;
+    }
+
     setExtendError("");
     setExtending(true);
     try {
@@ -711,6 +809,28 @@ export default function ReservationsPage() {
     } finally {
       setExtending(false);
     }
+  }
+
+  function getExtendValidationError(date = extendIsoDate, time = extendReturnTime) {
+    if (!selectedReservation || !date || !time) return "";
+
+    const currentEnd = new Date(`${selectedReservation.endDate}T${selectedReservation.returnTime}`);
+    const newEnd = new Date(`${date}T${time}`);
+
+    if (Number.isNaN(currentEnd.getTime()) || Number.isNaN(newEnd.getTime())) {
+      return "Invalid return date or time";
+    }
+
+    if (newEnd <= currentEnd) {
+      return `New return date must be after the current return date (${formatDateTime(selectedReservation.endDate, selectedReservation.returnTime)})`;
+    }
+
+    return "";
+  }
+
+  function validateExtendInputsOnBlur() {
+    const error = getExtendValidationError();
+    setExtendError(error);
   }
 
   async function handleReturnPhotoFiles(files: FileList | null) {
@@ -762,6 +882,20 @@ export default function ReservationsPage() {
     }
   }
 
+  async function handleStartRental() {
+    if (!selectedReservation) return;
+    setStartingRental(true);
+    try {
+      const updatedReservation = await startRental(selectedReservation.id);
+      setSelectedReservation(updatedReservation);
+      setReservationsReloadKey((current) => current + 1);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setStartingRental(false);
+    }
+  }
+
   const mobileDetail = showNewBooking || !!selectedReservation;
 
   return (
@@ -797,7 +931,10 @@ export default function ReservationsPage() {
             {statusFilters.map((f) => (
               <button
                 key={f.value}
-                onClick={() => setStatusFilter(f.value)}
+                onClick={() => {
+                  setStatusFilter(f.value);
+                  if (f.value !== "active") setOverdueOnly(false);
+                }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   statusFilter === f.value
                     ? "bg-primary text-primary-foreground"
@@ -809,6 +946,18 @@ export default function ReservationsPage() {
             ))}
           </div>
         </div>
+        <Button
+          variant={overdueOnly ? "default" : "outline"}
+          onClick={() => {
+            setOverdueOnly((current) => {
+              const next = !current;
+              if (next) setStatusFilter("active");
+              return next;
+            });
+          }}
+        >
+          {t("dashboard.overdueReturns")}
+        </Button>
         <div className="flex-1 sm:flex-none sm:w-36">
           <EuropeanDateInput
             displayValue={filterDateInputs.startDate}
@@ -839,7 +988,11 @@ export default function ReservationsPage() {
               {reservations.map((reservation) => (
                 <button
                   key={reservation.id}
-                  onClick={() => { setSelectedReservation(reservation); setShowNewBooking(false); }}
+                  onClick={() => {
+                    setSelectedReservation(reservation);
+                    setRequestedReservationId(reservation.id);
+                    setShowNewBooking(false);
+                  }}
                   className={`flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-muted/50 ${
                     selectedReservation?.id === reservation.id ? "bg-muted/50" : ""
                   }`}
@@ -850,6 +1003,11 @@ export default function ReservationsPage() {
                       <Badge className={statusColors[reservation.status]} variant="secondary">
                         {statusLabels[reservation.status]}
                       </Badge>
+                      {isReservationOverdue(reservation, currentTime) && (
+                        <Badge className="bg-destructive/10 text-destructive" variant="secondary">
+                          {t("res.status.overdue")}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {reservation.vehicleName}
@@ -861,7 +1019,7 @@ export default function ReservationsPage() {
                   <div className="text-right shrink-0">
                     <div className="flex items-center justify-end gap-1.5">
                       <p className="text-sm font-bold">&euro;{reservation.totalCost}</p>
-                      {reservation.payment && (
+                      {isReservationFullyPaid(reservation) && (
                         <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
                       )}
                     </div>
@@ -1146,6 +1304,11 @@ export default function ReservationsPage() {
                               </p>
                               <p className="text-xs text-muted-foreground truncate">{c.email}</p>
                             </div>
+                            {c.blacklisted && (
+                              <Badge variant="secondary" className="bg-destructive/10 text-destructive text-xs">
+                                {t("customers.blacklisted")}
+                              </Badge>
+                            )}
                             {c.verified && (
                               <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
                                 {t("booking.verified")}
@@ -1154,6 +1317,20 @@ export default function ReservationsPage() {
                           </button>
                         ))}
                         </div>
+                        {selectedCustomer?.blacklisted && (
+                          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                              <div>
+                                <p className="font-medium">{t("customers.blacklisted")}</p>
+                                <p>{t("customers.blacklistWarning")}</p>
+                                {selectedCustomer.internalNotes && (
+                                  <p className="mt-1 text-xs text-destructive/90">{selectedCustomer.internalNotes}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -1424,21 +1601,40 @@ export default function ReservationsPage() {
             <Card className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-none border-x-0 border-t-0 lg:flex-none lg:rounded-lg lg:border">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <button className="lg:hidden" onClick={() => setSelectedReservation(null)}>
+                  <button
+                    className="lg:hidden"
+                    onClick={() => {
+                      setSelectedReservation(null);
+                      setRequestedReservationId(null);
+                    }}
+                  >
                     <ChevronLeft className="h-5 w-5 text-muted-foreground" />
                   </button>
                   <CardTitle>{t("res.bookingDetails")}</CardTitle>
                 </div>
-                <button className="hidden lg:block" onClick={() => setSelectedReservation(null)}>
+                <button
+                  className="hidden lg:block"
+                  onClick={() => {
+                    setSelectedReservation(null);
+                    setRequestedReservationId(null);
+                  }}
+                >
                   <X className="h-4 w-4 text-muted-foreground" />
                 </button>
               </CardHeader>
               <CardContent className="space-y-4 flex-1 overflow-y-auto min-h-0">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">#{selectedReservation.id}</p>
-                  <Badge className={statusColors[selectedReservation.status]} variant="secondary">
-                    {statusLabels[selectedReservation.status]}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={statusColors[selectedReservation.status]} variant="secondary">
+                      {statusLabels[selectedReservation.status]}
+                    </Badge>
+                    {isReservationOverdue(selectedReservation, currentTime) && (
+                      <Badge className="bg-destructive/10 text-destructive" variant="secondary">
+                        {t("res.status.overdue")}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <Separator />
@@ -1618,7 +1814,7 @@ export default function ReservationsPage() {
                   {t("res.created")}: {formatDate(selectedReservation.createdAt)}
                 </p>
 
-                {selectedReservation.status !== "cancelled" && !selectedReservation.payment && canMarkAsPaid && (
+                {selectedReservation.status !== "cancelled" && !isReservationFullyPaid(selectedReservation) && canMarkAsPaid && (
                   <>
                     <Separator />
                     <Button
@@ -1633,9 +1829,19 @@ export default function ReservationsPage() {
                   </>
                 )}
 
-                {["pending", "confirmed", "active"].includes(selectedReservation.status) && (canCancel || canSwap || canExtend || canCompleteReturn) && (
+                {["pending", "confirmed", "active"].includes(selectedReservation.status) && (canStartRental || canCancel || canSwap || canExtend || canCompleteReturn) && (
                   <>
                     <Separator />
+                    {selectedReservation.status === "confirmed" && canStartRental && (
+                      <Button
+                        className="w-full"
+                        disabled={startingRental}
+                        onClick={handleStartRental}
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        {startingRental ? t("res.startingRental") : t("res.startRental")}
+                      </Button>
+                    )}
                     {selectedReservation.status === "active" && canCompleteReturn && (
                       <Button
                         className="w-full"
@@ -1810,20 +2016,56 @@ export default function ReservationsPage() {
 
                 <div className="space-y-1.5">
                   <p className="text-xs font-medium text-muted-foreground">{t("res.payment")}</p>
-                  {selectedReservation.payment ? (
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-                        <Check className="mr-1 h-3 w-3" />
-                        {t("res.paid")}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {t("res.paymentMethodCash")} · {formatDate(selectedReservation.payment.paidAt.slice(0, 10))}
-                      </span>
+                  {getReservationPayments(selectedReservation).length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          className={
+                            isReservationFullyPaid(selectedReservation)
+                              ? "bg-green-100 text-green-800 hover:bg-green-100"
+                              : "bg-amber-100 text-amber-800 hover:bg-amber-100"
+                          }
+                        >
+                          <Check className="mr-1 h-3 w-3" />
+                          {isReservationFullyPaid(selectedReservation) ? t("res.paid") : t("res.partiallyPaid")}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {getReservationPayments(selectedReservation).length} {t("res.paymentEntries")}
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <div className="flex justify-between gap-3">
+                          <span>{t("res.paidAmount")}</span>
+                          <span className="font-medium text-foreground">&euro;{getReservationPaidAmount(selectedReservation)}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span>{t("res.outstandingAmount")}</span>
+                          <span className={`font-medium ${getReservationOutstandingAmount(selectedReservation) > 0 ? "text-amber-700" : "text-foreground"}`}>
+                            &euro;{getReservationOutstandingAmount(selectedReservation)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1 border-t pt-2">
+                        {getReservationPayments(selectedReservation).map((payment, index) => (
+                          <div key={`${payment.paidAt}-${index}`} className="flex justify-between gap-3 text-xs text-muted-foreground">
+                            <span>
+                              {t("res.paymentMethodCash")} · {formatDate(payment.paidAt.slice(0, 10))}
+                            </span>
+                            <span className="font-medium text-foreground">&euro;{payment.amount}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      {t("res.unpaid")}
-                    </Badge>
+                    <div className="space-y-1">
+                      <Badge variant="outline" className="text-muted-foreground">
+                        {t("res.unpaid")}
+                      </Badge>
+                      <div className="flex justify-between gap-3 text-xs text-muted-foreground">
+                        <span>{t("res.outstandingAmount")}</span>
+                        <span className="font-medium text-foreground">&euro;{selectedReservation.totalCost}</span>
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -1862,6 +2104,37 @@ export default function ReservationsPage() {
       </div>
 
       <Dialog
+        open={showBlacklistedCustomerWarning}
+        onOpenChange={(open) => { if (!open) setShowBlacklistedCustomerWarning(false); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("customers.blacklisted")}</DialogTitle>
+            <DialogDescription>{t("customers.blacklistWarning")}</DialogDescription>
+          </DialogHeader>
+          {selectedCustomer?.internalNotes && (
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+              {selectedCustomer.internalNotes}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBlacklistedCustomerWarning(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                setShowBlacklistedCustomerWarning(false);
+                void submitBooking();
+              }}
+              disabled={saving}
+            >
+              {t("common.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={!!confirmCancelReservation}
         onOpenChange={(open) => { if (!open) setConfirmCancelReservation(null); }}
       >
@@ -1878,7 +2151,7 @@ export default function ReservationsPage() {
             <div className="space-y-3 py-2">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">{t("res.cancellationReason")}</label>
-                <Select value={cancelReason} onValueChange={setCancelReason}>
+                <Select value={cancelReason} onValueChange={(value) => setCancelReason(value ?? "")}>
                   <SelectTrigger>
                     <SelectValue placeholder={t("res.cancellationReasonPlaceholder")} />
                   </SelectTrigger>
@@ -1936,7 +2209,11 @@ export default function ReservationsPage() {
               <Input
                 type="number"
                 min="0"
-                placeholder="e.g. 45000"
+                placeholder={
+                  selectedReservationVehicle
+                    ? `${t("res.previousMileage")}: ${selectedReservationVehicle.mileage}`
+                    : "e.g. 45000"
+                }
                 value={returnMileage}
                 onChange={(e) => setReturnMileage(e.target.value)}
               />
@@ -2075,11 +2352,14 @@ export default function ReservationsPage() {
                 onDisplayChange={(v) => {
                   const next = normalizeEuropeanDateInput(v);
                   setExtendDateInput(next);
-                  setExtendIsoDate(parseEuropeanDate(next));
+                  const parsedDate = parseEuropeanDate(next);
+                  setExtendIsoDate(parsedDate);
+                  setExtendError(getExtendValidationError(parsedDate, extendReturnTime));
                 }}
                 onIsoChange={(v) => {
                   setExtendDateInput(isoDateToEuropeanInput(v));
                   setExtendIsoDate(v);
+                  setExtendError(getExtendValidationError(v, extendReturnTime));
                 }}
               />
             </div>
@@ -2088,7 +2368,12 @@ export default function ReservationsPage() {
               <Input
                 type="time"
                 value={extendReturnTime}
-                onChange={(e) => setExtendReturnTime(e.target.value)}
+                onChange={(e) => {
+                  const nextTime = e.target.value;
+                  setExtendReturnTime(nextTime);
+                  setExtendError(getExtendValidationError(extendIsoDate, nextTime));
+                }}
+                onBlur={validateExtendInputsOnBlur}
               />
             </div>
             {selectedReservation && extendIsoDate && (
@@ -2121,7 +2406,7 @@ export default function ReservationsPage() {
               {t("common.cancel")}
             </Button>
             <Button
-              disabled={!extendIsoDate || extending}
+              disabled={!extendIsoDate || !!getExtendValidationError() || extending}
               onClick={handleExtendReservation}
             >
               {extending ? t("res.extending") : t("res.extendConfirm")}

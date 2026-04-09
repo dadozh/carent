@@ -18,6 +18,12 @@ export interface ReturnChecklist {
   completedAt: string;
 }
 
+export interface ReservationPayment {
+  paidAt: string;
+  method: "cash";
+  amount: number;
+}
+
 export interface Vehicle {
   id: string;
   make: string;
@@ -122,9 +128,12 @@ export interface Reservation {
   // Return checklist (completed reservations)
   returnChecklist?: ReturnChecklist;
   // Payment tracking (cash only for now)
+  payments?: ReservationPayment[];
+  // Legacy single-payment shape kept for read compatibility.
   payment?: {
     paidAt: string;
     method: "cash";
+    amountPaid: number;
   };
 }
 

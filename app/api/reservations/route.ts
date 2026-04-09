@@ -16,6 +16,7 @@ export async function GET(request: Request) {
       status: searchParams.get("status") ?? undefined,
       dateFrom: searchParams.get("dateFrom") ?? undefined,
       dateTo: searchParams.get("dateTo") ?? undefined,
+      overdue: ["1", "true"].includes((searchParams.get("overdue") ?? "").toLowerCase()),
       limit: Number.isFinite(limit) ? limit : undefined,
     });
     return Response.json(result);

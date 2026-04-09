@@ -47,6 +47,11 @@ export async function PATCH(
       reservation = markReservationPaid(id, data.payment, tenantId);
       action = "marked_paid";
       detail = `Marked as paid (${data.payment.method})`;
+    } else if (data.status === "active") {
+      assertCan(role, "startRental");
+      reservation = updateReservationStatus(id, data, tenantId);
+      action = "started_rental";
+      detail = `Started rental`;
     } else {
       assertCan(role, "cancelReservation");
       reservation = updateReservationStatus(id, data, tenantId);

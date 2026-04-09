@@ -35,7 +35,7 @@ export default function DashboardPage() {
     monthlyRevenue[0]
   );
 
-  const now = Date.now();
+  const [now] = useState(() => Date.now());
   const overdueReturns = reservations
     .filter((r) => {
       if (r.status !== "active") return false;
@@ -93,7 +93,7 @@ export default function DashboardPage() {
               {overdueReturns.map(({ reservation, overdueMs }) => (
                 <Link
                   key={reservation.id}
-                  href="/reservations"
+                  href={`/reservations?overdue=1&reservationId=${encodeURIComponent(reservation.id)}`}
                   className="flex items-center justify-between rounded-lg border border-destructive/20 bg-background p-3 hover:bg-muted/50 transition-colors"
                 >
                   <div>

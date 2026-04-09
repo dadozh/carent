@@ -5,6 +5,7 @@ import type { UserRole } from "@/lib/auth-db";
  *
  * read              — view any data (fleet, reservations, customers)
  * writeReservation  — create reservations
+ * startRental       — mark a confirmed reservation as picked up / active
  * cancelReservation — cancel active/confirmed reservations
  * swapVehicle       — swap vehicle mid-rental
  * extendReservation — extend the return date of an active reservation
@@ -18,6 +19,7 @@ import type { UserRole } from "@/lib/auth-db";
 export type Action =
   | "read"
   | "writeReservation"
+  | "startRental"
   | "cancelReservation"
   | "swapVehicle"
   | "extendReservation"
@@ -40,6 +42,7 @@ const ROLE_ORDER: UserRole[] = [
 const REQUIRED_ROLE: Record<Action, UserRole> = {
   read:               "viewer",
   writeReservation:   "agent",
+  startRental:        "agent",
   cancelReservation:  "manager",
   swapVehicle:        "manager",
   extendReservation:  "agent",

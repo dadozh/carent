@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType } from "@/lib/mock-data";
+import { formatDateTime } from "@/lib/date-format";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
+import { getReservationOutstandingAmount } from "@/lib/reservation-payments";
 import { getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { getTenantSettings } from "@/lib/auth-db";
 
@@ -84,6 +86,7 @@ export interface ReservationListFilters {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  overdue?: boolean;
   limit?: number;
 }
 
@@ -186,10 +189,20 @@ function parseCustomer(row: JsonRow): Customer {
 
 function parseReservation(row: JsonRow): Reservation {
   const reservation = JSON.parse(row.data) as Reservation;
+  const legacyPayment = reservation.payment
+    ? [{
+        paidAt: reservation.payment.paidAt,
+        method: reservation.payment.method,
+        amount: reservation.payment.amountPaid ?? reservation.totalCost,
+      }]
+    : [];
+
   return {
     ...reservation,
     vehiclePlate: reservation.vehiclePlate ?? "",
     images: normalizeImageList(reservation.images),
+    payments: (reservation.payments ?? legacyPayment).filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0),
+    payment: undefined,
   };
 }
 
@@ -349,6 +362,18 @@ function reservationMatchesFilters(reservation: Reservation, filters: Reservatio
     if (!statuses.has(reservation.status)) return false;
   }
 
+  if (filters.overdue) {
+    const returnTime = reservation.returnTime ?? "00:00";
+    const returnTs = new Date(`${reservation.endDate}T${returnTime}`).getTime();
+    if (
+      reservation.status !== "active" ||
+      Number.isNaN(returnTs) ||
+      returnTs >= Date.now()
+    ) {
+      return false;
+    }
+  }
+
   if (filters.dateFrom || filters.dateTo) {
     const reservationStart = new Date(`${reservation.startDate}T${reservation.pickupTime}`).getTime();
     const reservationEnd = new Date(`${reservation.endDate}T${reservation.returnTime}`).getTime();
@@ -413,8 +438,31 @@ export function updateReservationStatus(id: string, input: ReservationStatusUpda
   const reservation = getReservationById(id, tenantId);
   if (!reservation) throw new Error("Reservation not found");
 
-  if (input.status !== "cancelled") {
+  if (!["cancelled", "active"].includes(input.status)) {
     throw new Error("Unsupported reservation status update");
+  }
+
+  if (input.status === "active") {
+    if (reservation.status === "active") {
+      return reservation;
+    }
+
+    if (reservation.status !== "confirmed") {
+      throw new Error("Only confirmed reservations can be started");
+    }
+
+    const updatedReservation: Reservation = {
+      ...reservation,
+      status: "active",
+    };
+
+    getDb()
+      .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+      .run(JSON.stringify(updatedReservation), id, tenantId);
+
+    updateVehicle(reservation.vehicleId, { status: "rented" }, tenantId);
+
+    return updatedReservation;
   }
 
   if (reservation.status === "completed") {
@@ -496,7 +544,7 @@ export function extendReservation(id: string, input: ExtendReservationInput, ten
     throw new Error("Invalid return date or time");
   }
   if (newEnd <= currentEnd) {
-    throw new Error("New return date must be after the current return date");
+    throw new Error(`New return date must be after the current return date (${formatDateTime(reservation.endDate, reservation.returnTime)})`);
   }
 
   // Check for conflicts in the extension window (currentEnd → newEnd + turnaround).
@@ -567,14 +615,22 @@ export function markReservationPaid(id: string, input: MarkReservationPaidInput,
   const reservation = getReservationById(id, tenantId);
   if (!reservation) throw new Error("Reservation not found");
   if (reservation.status === "cancelled") throw new Error("Cannot mark a cancelled reservation as paid");
-  if (reservation.payment) throw new Error("Reservation is already marked as paid");
+  const outstandingAmount = getReservationOutstandingAmount(reservation);
+  if (outstandingAmount <= 0) {
+    throw new Error("Reservation is already marked as paid");
+  }
 
   const updatedReservation: Reservation = {
     ...reservation,
-    payment: {
-      paidAt: new Date().toISOString(),
-      method: input.method,
-    },
+    payments: [
+      ...(reservation.payments ?? []),
+      {
+        paidAt: new Date().toISOString(),
+        method: input.method,
+        amount: outstandingAmount,
+      },
+    ],
+    payment: undefined,
   };
 
   getDb()
