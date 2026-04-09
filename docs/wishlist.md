@@ -48,6 +48,4 @@ Deferred features that would add significant value but are not required for an M
 
 ## Reporting
 
-- **Revenue by vehicle** — rank vehicles by revenue generated in a selected period
-- **Customer lifetime value** — total spent and number of rentals per customer, sortable list
 - **Export to CSV / Excel** — allow managers to export reservation lists and revenue summaries for external reporting

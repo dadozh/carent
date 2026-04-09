@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type Customer } from "@/lib/mock-data";
+import { type Customer, statusColors } from "@/lib/mock-data";
 import { useReservations, type CustomerInput, type CustomerUpdateInput } from "@/lib/use-reservations";
 import { useCan } from "@/lib/role-context";
 import { useI18n } from "@/lib/i18n";
@@ -39,7 +39,7 @@ const emptyAdd = {
 
 export default function CustomersPage() {
   const { t } = useI18n();
-  const { customers, addCustomer, updateCustomer } = useReservations({ loadReservations: false });
+  const { customers, reservations, addCustomer, updateCustomer } = useReservations();
   const canWrite = useCan("writeReservation");
 
   const [search, setSearch] = useState("");
@@ -433,50 +433,103 @@ export default function CustomersPage() {
                       </div>
                     </div>
 
-                    {/* Account */}
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">{t("customers.account")}</p>
-                      <div className="rounded-lg border p-3 text-sm space-y-1.5">
-                        <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">{t("customers.verified")}</span>
-                          {selectedCustomer.verified ? (
-                            <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-                              <Check className="mr-1 h-3 w-3" />{t("customers.verified")}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-muted-foreground">{t("customers.notVerified")}</Badge>
-                          )}
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">{t("customers.blacklisted")}</span>
-                          {selectedCustomer.blacklisted ? (
-                            <Badge variant="destructive">
-                              <Ban className="mr-1 h-3 w-3" />{t("customers.blacklisted")}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-green-700 border-green-200">{t("customers.notBlacklisted")}</Badge>
-                          )}
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">{t("customers.totalRentals")}</span>
-                          <span className="font-medium">{selectedCustomer.totalRentals}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">{t("customers.totalSpent")}</span>
-                          <span className="font-medium">&euro;{selectedCustomer.totalSpent}</span>
-                        </div>
-                      </div>
-                    </div>
+                    {/* Account & Lifetime Value */}
+                    {(() => {
+                      const custReservations = reservations.filter((r) => r.customerId === selectedCustomer.id);
+                      const lifetimeValue = custReservations
+                        .filter((r) => r.status !== "cancelled")
+                        .reduce((sum, r) => sum + r.totalCost, 0);
+                      const completedCount = custReservations.filter((r) => r.status === "completed").length;
+                      const avgPerRental = completedCount > 0 ? Math.round(lifetimeValue / completedCount) : 0;
+                      const recentRentals = custReservations
+                        .filter((r) => r.status !== "cancelled")
+                        .slice(0, 5);
 
-                    {/* Internal notes */}
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">{t("customers.internalNotes")}</p>
-                      {selectedCustomer.internalNotes ? (
-                        <p className="rounded-lg border p-3 text-sm whitespace-pre-wrap">{selectedCustomer.internalNotes}</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground italic">{t("customers.noNotes")}</p>
-                      )}
-                    </div>
+                      return (
+                        <>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">{t("customers.account")}</p>
+                            <div className="rounded-lg border p-3 text-sm space-y-1.5">
+                              <div className="flex justify-between items-center">
+                                <span className="text-muted-foreground">{t("customers.verified")}</span>
+                                {selectedCustomer.verified ? (
+                                  <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                                    <Check className="mr-1 h-3 w-3" />{t("customers.verified")}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-muted-foreground">{t("customers.notVerified")}</Badge>
+                                )}
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-muted-foreground">{t("customers.blacklisted")}</span>
+                                {selectedCustomer.blacklisted ? (
+                                  <Badge variant="destructive">
+                                    <Ban className="mr-1 h-3 w-3" />{t("customers.blacklisted")}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-green-700 border-green-200">{t("customers.notBlacklisted")}</Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">{t("customers.lifetimeValue")}</p>
+                            <div className="rounded-lg border p-3 text-sm space-y-1.5">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">{t("customers.totalSpent")}</span>
+                                <span className="text-lg font-bold text-primary">&euro;{lifetimeValue}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">{t("customers.totalRentals")}</span>
+                                <span className="font-medium">{completedCount}</span>
+                              </div>
+                              {completedCount > 0 && (
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">{t("customers.avgPerRental")}</span>
+                                  <span className="font-medium">&euro;{avgPerRental}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Internal notes */}
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">{t("customers.internalNotes")}</p>
+                            {selectedCustomer.internalNotes ? (
+                              <p className="rounded-lg border p-3 text-sm whitespace-pre-wrap">{selectedCustomer.internalNotes}</p>
+                            ) : (
+                              <p className="text-sm text-muted-foreground italic">{t("customers.noNotes")}</p>
+                            )}
+                          </div>
+
+                          {/* Recent rentals */}
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">{t("customers.recentRentals")}</p>
+                            {recentRentals.length === 0 ? (
+                              <p className="text-sm text-muted-foreground italic">{t("customers.noRecentRentals")}</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {recentRentals.map((r) => (
+                                  <div key={r.id} className="rounded-lg border p-2.5 text-xs space-y-0.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-medium">{r.vehicleName}</span>
+                                      <span className={`rounded-full px-2 py-0.5 font-medium ${statusColors[r.status]}`}>
+                                        {r.status}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-muted-foreground">
+                                      <span>{formatDate(r.startDate)} – {formatDate(r.endDate)}</span>
+                                      <span className="font-medium text-foreground">&euro;{r.totalCost}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </CardContent>

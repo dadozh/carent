@@ -1,6 +1,7 @@
 import { createReservation, listReservationsWithTotal } from "@/lib/rental-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
+import { logAction } from "@/lib/audit-db";
 
 export const runtime = "nodejs";
 
@@ -27,10 +28,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId, role } = await getApiSession();
+    const { tenantId, userId, userName, role } = await getApiSession();
     assertCan(role, "writeReservation");
     const data = await request.json();
     const reservation = createReservation(data, tenantId);
+    logAction({ tenantId, userId, userName, userRole: role, entityType: "reservation", entityId: reservation.id, action: "created", detail: `${reservation.customerName} — ${reservation.vehicleName} (${reservation.startDate} → ${reservation.endDate})` });
     return Response.json({ reservation }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create reservation";

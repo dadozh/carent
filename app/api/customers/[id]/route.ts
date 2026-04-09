@@ -1,6 +1,7 @@
 import { getCustomerById, updateCustomer } from "@/lib/rental-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
+import { logAction } from "@/lib/audit-db";
 
 export const runtime = "nodejs";
 
@@ -26,10 +27,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const [{ id }, { tenantId, role }] = await Promise.all([params, getApiSession()]);
+    const [{ id }, session] = await Promise.all([params, getApiSession()]);
+    const { tenantId, userId, userName, role } = session;
     assertCan(role, "writeReservation");
     const data = await request.json();
     const customer = updateCustomer(id, data, tenantId);
+    const flags = [data.blacklisted ? "blacklisted" : null, data.verified === false ? "unverified" : null].filter(Boolean).join(", ");
+    logAction({ tenantId, userId, userName, userRole: role, entityType: "customer", entityId: id, action: "updated", detail: `${customer.firstName} ${customer.lastName}${flags ? ` — ${flags}` : ""}` });
     return Response.json({ customer });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update customer";

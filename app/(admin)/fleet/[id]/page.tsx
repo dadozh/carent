@@ -1,12 +1,13 @@
 "use client";
 
-import { getCustomer, vehicleStatusColors } from "@/lib/mock-data";
+import { vehicleStatusColors } from "@/lib/mock-data";
 import { useVehicles } from "@/lib/use-vehicles";
+import { useReservations } from "@/lib/use-reservations";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Calendar, Fuel, Gauge, MapPin, Settings, Users, Pencil } from "lucide-react";
+import { ArrowLeft, Calendar, Fuel, Gauge, MapPin, Settings, Users, Pencil, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useI18n();
   const { getVehicle, isLoading } = useVehicles();
+  const { reservations } = useReservations();
   const canManageFleet = useCan("manageFleet");
   const vehicle = getVehicle(id);
 
@@ -92,6 +94,15 @@ export default function VehicleDetailPage() {
     };
     return labels[value] ?? value;
   }
+
+  const vehicleReservations = reservations.filter((r) => r.vehicleId === vehicle.id);
+  const completedRentals = vehicleReservations.filter((r) => r.status === "completed");
+  const totalRevenue = completedRentals.reduce((sum, r) => sum + r.totalCost, 0);
+  const avgPerRental = completedRentals.length > 0 ? Math.round(totalRevenue / completedRentals.length) : 0;
+  const activeNow = vehicleReservations.filter((r) => r.status === "active").length;
+  const recentRentals = vehicleReservations
+    .filter((r) => r.status !== "cancelled")
+    .slice(0, 5);
 
   const specs = [
     { label: t("fleet.fuelType"), value: getFuelLabel(vehicle.fuelType), icon: Fuel },
@@ -201,6 +212,36 @@ export default function VehicleDetailPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                {t("fleet.revenueStats")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">{t("fleet.totalRevenue")}</p>
+                <p className="text-2xl font-bold text-primary">&euro;{totalRevenue.toLocaleString()}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">{t("fleet.completedRentals")}</p>
+                  <p className="text-lg font-semibold">{completedRentals.length}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">{t("fleet.avgPerRental")}</p>
+                  <p className="text-lg font-semibold">&euro;{avgPerRental}</p>
+                </div>
+              </div>
+              {activeNow > 0 && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                  <p className="text-xs text-green-700 font-medium">{t("fleet.activeNow")}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>{t("fleet.serviceSchedule")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -220,26 +261,19 @@ export default function VehicleDetailPage() {
               <CardTitle>{t("fleet.rentalHistory")}</CardTitle>
             </CardHeader>
             <CardContent>
-              {vehicle.rentalHistory.length === 0 ? (
+              {recentRentals.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t("fleet.noRentals")}</p>
               ) : (
                 <div className="space-y-3">
-                  {vehicle.rentalHistory.map((rental, i) => {
-                    const customer = getCustomer(rental.customerId);
-                    return (
-                      <div key={i} className="rounded-lg border p-3">
-                        <p className="text-sm font-medium">
-                          {customer ? `${customer.firstName} ${customer.lastName}` : "Unknown"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDateRange(rental.startDate, rental.endDate)}
-                        </p>
-                        <p className="text-sm font-medium text-primary mt-1">
-                          &euro;{rental.revenue}
-                        </p>
-                      </div>
-                    );
-                  })}
+                  {recentRentals.map((r) => (
+                    <div key={r.id} className="rounded-lg border p-3">
+                      <p className="text-sm font-medium">{r.customerName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateRange(r.startDate, r.endDate)}
+                      </p>
+                      <p className="text-sm font-medium text-primary mt-1">&euro;{r.totalCost}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
