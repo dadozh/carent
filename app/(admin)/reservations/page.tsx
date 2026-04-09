@@ -137,6 +137,7 @@ export default function ReservationsPage() {
   const newReservationFileRef = useRef<HTMLInputElement>(null);
   const customerDetailFileRef = useRef<HTMLInputElement>(null);
   const reservationDetailFileRef = useRef<HTMLInputElement>(null);
+  const returnPhotosFileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
@@ -182,6 +183,8 @@ export default function ReservationsPage() {
   const [returnDamageDescription, setReturnDamageDescription] = useState("");
   const [returnExtraCharges, setReturnExtraCharges] = useState("");
   const [returnNotes, setReturnNotes] = useState("");
+  const [returnPhotos, setReturnPhotos] = useState<string[]>([]);
+  const [uploadingReturnPhotos, setUploadingReturnPhotos] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [paying, setPaying] = useState(false);
   const [currentTime] = useState(() => Date.now());
@@ -708,6 +711,18 @@ export default function ReservationsPage() {
     }
   }
 
+  async function handleReturnPhotoFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setUploadingReturnPhotos(true);
+    try {
+      const urls = normalizePhotoUrls(await uploadImages(files, "returns"));
+      if (urls.length) setReturnPhotos((prev) => normalizePhotoUrls([...prev, ...urls]));
+    } finally {
+      setUploadingReturnPhotos(false);
+      if (returnPhotosFileRef.current) returnPhotosFileRef.current.value = "";
+    }
+  }
+
   async function handleCompleteReturn() {
     if (!selectedReservation || !returnMileage) return;
     setCompleting(true);
@@ -719,6 +734,7 @@ export default function ReservationsPage() {
         damageDescription: returnHasDamage ? returnDamageDescription.trim() || undefined : undefined,
         extraCharges: returnExtraCharges !== "" ? Number(returnExtraCharges) : undefined,
         notes: returnNotes.trim() || undefined,
+        returnPhotos: returnPhotos.length ? returnPhotos : undefined,
       });
       setSelectedReservation(updatedReservation);
       setReservationsReloadKey((current) => current + 1);
@@ -1628,6 +1644,7 @@ export default function ReservationsPage() {
                           setReturnDamageDescription("");
                           setReturnExtraCharges("");
                           setReturnNotes("");
+                          setReturnPhotos([]);
                           setShowReturnDialog(true);
                         }}
                       >
@@ -1776,6 +1793,15 @@ export default function ReservationsPage() {
                           <p className="text-muted-foreground italic pt-1">{selectedReservation.returnChecklist.notes}</p>
                         )}
                       </div>
+                      {selectedReservation.returnChecklist.returnPhotos && selectedReservation.returnChecklist.returnPhotos.length > 0 && (
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                          {selectedReservation.returnChecklist.returnPhotos.map((url, i) => (
+                            <div key={url} className="relative aspect-video overflow-hidden rounded-md bg-muted">
+                              <Image src={url} alt={`${t("res.returnPhotos")} ${i + 1}`} fill className="object-cover" unoptimized />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -1976,6 +2002,42 @@ export default function ReservationsPage() {
                 value={returnNotes}
                 onChange={(e) => setReturnNotes(e.target.value)}
               />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.returnPhotos")}</label>
+              <button
+                type="button"
+                disabled={uploadingReturnPhotos}
+                onClick={() => returnPhotosFileRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-3 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                <ImagePlus className="h-4 w-4" />
+                {uploadingReturnPhotos ? t("common.loading") : t("res.addReturnPhotos")}
+              </button>
+              <input
+                ref={returnPhotosFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => void handleReturnPhotoFiles(e.target.files)}
+              />
+              {returnPhotos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {returnPhotos.map((url, i) => (
+                    <div key={url} className="group relative aspect-video overflow-hidden rounded-md bg-muted">
+                      <Image src={url} alt={`${t("res.returnPhotos")} ${i + 1}`} fill className="object-cover" unoptimized />
+                      <button
+                        type="button"
+                        onClick={() => setReturnPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:flex"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter className="gap-2">

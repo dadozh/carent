@@ -32,7 +32,6 @@ Deferred features that would add significant value but are not required for an M
 
 ## Fleet & Operations
 
-- **Return photo upload UI** — the data model already has `returnPhotos[]` on `ReturnChecklist`; only the upload UI is missing
 - **Scheduled maintenance reminders** — alert when a vehicle is approaching its next service date or mileage threshold
 - **Fuel cost tracking** — record the cost of refuelling on return, automatically propose it as an extra charge
 

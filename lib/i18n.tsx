@@ -374,6 +374,8 @@ const translations = {
     "res.returnChecklistSection": "Return checklist",
     "res.returnedMileage": "Return mileage",
     "res.returnedAt": "Returned at",
+    "res.returnPhotos": "Return photos",
+    "res.addReturnPhotos": "Add photos",
 
     // Payment
     "res.payment": "Payment",
@@ -834,6 +836,8 @@ const translations = {
     "res.returnChecklistSection": "Prijemni pregled",
     "res.returnedMileage": "Kilometraža pri povratku",
     "res.returnedAt": "Vraćeno",
+    "res.returnPhotos": "Fotografije pri povratku",
+    "res.addReturnPhotos": "Dodaj fotografije",
 
     // Payment
     "res.payment": "Plaćanje",
