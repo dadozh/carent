@@ -451,6 +451,12 @@ export function updateReservationStatus(id: string, input: ReservationStatusUpda
       throw new Error("Only confirmed reservations can be started");
     }
 
+    const pickupDateTime = new Date(`${reservation.startDate}T${reservation.pickupTime}`);
+    const earliestStart = new Date(pickupDateTime.getTime() - 60 * 60 * 1000); // 1 hour before pickup
+    if (new Date() < earliestStart) {
+      throw new Error("Rental cannot be started more than 1 hour before the scheduled pickup time");
+    }
+
     const updatedReservation: Reservation = {
       ...reservation,
       status: "active",
@@ -483,6 +489,33 @@ export function updateReservationStatus(id: string, input: ReservationStatusUpda
   getDb()
     .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
     .run(JSON.stringify(updatedReservation), id, tenantId);
+
+  // If the reservation was active the vehicle was rented — return it to the right status.
+  // For confirmed reservations the vehicle was never rented, but breakdown/accident still
+  // means it needs to go into maintenance.
+  const isBreakdownOrAccident =
+    input.cancellationReason === "breakdown" || input.cancellationReason === "accident";
+
+  if (reservation.status === "active") {
+    updateVehicle(
+      reservation.vehicleId,
+      { status: isBreakdownOrAccident ? "maintenance" : "available" },
+      tenantId
+    );
+  } else if (isBreakdownOrAccident) {
+    updateVehicle(reservation.vehicleId, { status: "maintenance" }, tenantId);
+  }
+
+  if (isBreakdownOrAccident) {
+    appendVehicleMaintenanceLog(
+      reservation.vehicleId,
+      {
+        type: input.cancellationReason === "breakdown" ? "Breakdown" : "Accident / damage",
+        notes: `Reservation #${reservation.id} cancelled due to ${input.cancellationReason}.`,
+      },
+      tenantId
+    );
+  }
 
   return updatedReservation;
 }
