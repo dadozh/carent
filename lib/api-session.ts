@@ -4,6 +4,7 @@ import { getTenantById, getUserById } from "@/lib/auth-db";
 export interface ApiSession {
   tenantId: string;
   userId: string;
+  userName: string;
   role: string;
 }
 
@@ -30,5 +31,5 @@ export async function getApiSession(): Promise<ApiSession> {
   }
   if (!getTenantById(effectiveTenantId)) throw new Error("Unauthorized");
 
-  return { tenantId: effectiveTenantId, userId: user.id, role: user.role };
+  return { tenantId: effectiveTenantId, userId: user.id, userName: user.name, role: user.role };
 }

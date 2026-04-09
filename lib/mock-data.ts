@@ -4,6 +4,19 @@ export type ReservationStatus = "pending" | "confirmed" | "active" | "completed"
 
 export type FuelType = "Gasoline" | "Diesel" | "Hybrid" | "Electric" | "LPG";
 export type Transmission = "Manual" | "Automatic" | "CVT" | "Semi-Auto";
+export type SwapReasonType = "breakdown" | "accident" | "customer_request" | "other";
+export type FuelLevel = "empty" | "quarter" | "half" | "three_quarter" | "full";
+
+export interface ReturnChecklist {
+  returnMileage: number;
+  fuelLevel: FuelLevel;
+  hasDamage: boolean;
+  damageDescription?: string;
+  extraCharges?: number;
+  notes?: string;
+  returnPhotos?: string[];
+  completedAt: string;
+}
 
 export interface Vehicle {
   id: string;
@@ -44,7 +57,22 @@ export interface Customer {
   totalRentals: number;
   totalSpent: number;
   images: string[];
+  blacklisted?: boolean;
+  internalNotes?: string;
 }
+
+export type CustomerUpdateInput = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  licenseNumber?: string;
+  licenseExpiry?: string;
+  address?: string;
+  verified?: boolean;
+  blacklisted?: boolean;
+  internalNotes?: string;
+};
 
 export interface Reservation {
   id: string;
@@ -79,7 +107,25 @@ export interface Reservation {
     toVehiclePlate: string;
     swappedAt: string;
     reason: string;
+    reasonType: SwapReasonType;
+    fromVehicleCondition?: string;
   }>;
+  // Rental extension log
+  extensions?: Array<{
+    previousEndDate: string;
+    previousReturnTime: string;
+    newEndDate: string;
+    newReturnTime: string;
+    additionalCost: number;
+    extendedAt: string;
+  }>;
+  // Return checklist (completed reservations)
+  returnChecklist?: ReturnChecklist;
+  // Payment tracking (cash only for now)
+  payment?: {
+    paidAt: string;
+    method: "cash";
+  };
 }
 
 export const vehicles: Vehicle[] = [];

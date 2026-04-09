@@ -1,6 +1,7 @@
 import { createCustomer, listCustomers, updateCustomerImages } from "@/lib/rental-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
+import { logAction } from "@/lib/audit-db";
 
 export const runtime = "nodejs";
 
@@ -18,10 +19,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId, role } = await getApiSession();
+    const { tenantId, userId, userName, role } = await getApiSession();
     assertCan(role, "writeReservation");
     const data = await request.json();
     const customer = createCustomer(data, tenantId);
+    logAction({ tenantId, userId, userName, userRole: role, entityType: "customer", entityId: customer.id, action: "created", detail: `${customer.firstName} ${customer.lastName} (${customer.email})` });
     return Response.json({ customer }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create customer";

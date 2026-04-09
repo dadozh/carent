@@ -1,4 +1,4 @@
-import { getVehicleById, updateVehicle } from "@/lib/vehicle-db";
+import { getCustomerById, updateCustomer } from "@/lib/rental-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 import { logAction } from "@/lib/audit-db";
@@ -12,9 +12,9 @@ export async function GET(
   try {
     const [{ id }, { tenantId, role }] = await Promise.all([params, getApiSession()]);
     assertCan(role, "read");
-    const vehicle = getVehicleById(id, tenantId);
-    if (!vehicle) return Response.json({ error: "Vehicle not found" }, { status: 404 });
-    return Response.json({ vehicle });
+    const customer = getCustomerById(id, tenantId);
+    if (!customer) return Response.json({ error: "Customer not found" }, { status: 404 });
+    return Response.json({ customer });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error";
     const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
@@ -29,15 +29,19 @@ export async function PATCH(
   try {
     const [{ id }, session] = await Promise.all([params, getApiSession()]);
     const { tenantId, userId, userName, role } = session;
-    assertCan(role, "manageFleet");
+    assertCan(role, "writeReservation");
     const data = await request.json();
-    const vehicle = updateVehicle(id, data, tenantId);
-    if (!vehicle) return Response.json({ error: "Vehicle not found" }, { status: 404 });
-    logAction({ tenantId, userId, userName, userRole: role, entityType: "vehicle", entityId: id, action: "updated", detail: `${vehicle.make} ${vehicle.model} (${vehicle.plate})` });
-    return Response.json({ vehicle });
+    const customer = updateCustomer(id, data, tenantId);
+    const flags = [data.blacklisted ? "blacklisted" : null, data.verified === false ? "unverified" : null].filter(Boolean).join(", ");
+    logAction({ tenantId, userId, userName, userRole: role, entityType: "customer", entityId: id, action: "updated", detail: `${customer.firstName} ${customer.lastName}${flags ? ` — ${flags}` : ""}` });
+    return Response.json({ customer });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update vehicle";
-    const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 400;
+    const message = error instanceof Error ? error.message : "Unable to update customer";
+    const status =
+      message === "Unauthorized" ? 401
+      : message.startsWith("Forbidden") ? 403
+      : message === "Customer not found" ? 404
+      : 400;
     return Response.json({ error: message }, { status });
   }
 }

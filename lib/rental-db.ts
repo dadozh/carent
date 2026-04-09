@@ -2,9 +2,9 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import type { Customer, Reservation } from "@/lib/mock-data";
-import { RESERVATION_BLOCKING_STATUSES, reservationBlocksPeriod } from "@/lib/reservation-rules";
-import { getVehicleById } from "@/lib/vehicle-db";
+import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType } from "@/lib/mock-data";
+import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
+import { getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { getTenantSettings } from "@/lib/auth-db";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -56,6 +56,27 @@ export type VehicleSwapInput = {
   toVehicleName: string;
   toVehiclePlate: string;
   reason: string;
+  reasonType: SwapReasonType;
+  fromVehicleCondition?: string;
+};
+
+export type ExtendReservationInput = {
+  newEndDate: string;
+  newReturnTime: string;
+};
+
+export type ReturnChecklistInput = {
+  returnMileage: number;
+  fuelLevel: FuelLevel;
+  hasDamage: boolean;
+  damageDescription?: string;
+  extraCharges?: number;
+  notes?: string;
+  returnPhotos?: string[];
+};
+
+export type MarkReservationPaidInput = {
+  method: "cash";
 };
 
 export interface ReservationListFilters {
@@ -274,6 +295,48 @@ export function updateCustomerImages(id: string, images: string[], tenantId: str
   return updatedCustomer;
 }
 
+export function updateCustomer(id: string, input: CustomerUpdateInput, tenantId: string): Customer {
+  const customer = getCustomerById(id, tenantId);
+  if (!customer) throw new Error("Customer not found");
+
+  // Validate any required fields being changed
+  const merged = { ...customer, ...input };
+  if (!merged.firstName?.trim()) throw new Error("Customer first name is required");
+  if (!merged.lastName?.trim()) throw new Error("Customer last name is required");
+  if (!merged.email?.trim() || !isValidEmail(merged.email)) throw new Error("Valid customer email is required");
+  if (!merged.phone?.trim() || merged.phone.trim().length < 6) throw new Error("Valid customer phone is required");
+  if (!merged.licenseNumber?.trim()) throw new Error("Customer license number is required");
+  if (!merged.licenseExpiry?.trim()) throw new Error("Customer license expiry is required");
+
+  // Check for duplicates on email/license change, excluding the current customer
+  const emailChanged = input.email && normalize(input.email) !== normalize(customer.email);
+  const licenseChanged = input.licenseNumber && normalize(input.licenseNumber) !== normalize(customer.licenseNumber);
+  if (emailChanged || licenseChanged) {
+    const newEmail = normalize(merged.email);
+    const newLicense = normalize(merged.licenseNumber);
+    const duplicate = listCustomers(tenantId).find(
+      (c) => c.id !== id && (normalize(c.email) === newEmail || normalize(c.licenseNumber) === newLicense)
+    );
+    if (duplicate) throw new Error("A customer with this email or license number already exists");
+  }
+
+  const updatedCustomer: Customer = {
+    ...customer,
+    ...input,
+    // Keep computed fields unchanged
+    id: customer.id,
+    totalRentals: customer.totalRentals,
+    totalSpent: customer.totalSpent,
+    images: customer.images,
+  };
+
+  getDb()
+    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedCustomer), id, tenantId);
+
+  return updatedCustomer;
+}
+
 function reservationMatchesFilters(reservation: Reservation, filters: ReservationListFilters) {
   const search = filters.search?.trim().toLowerCase();
   if (search) {
@@ -381,6 +444,10 @@ export function swapReservationVehicle(id: string, input: VehicleSwapInput, tena
   if (!reservation) throw new Error("Reservation not found");
   if (reservation.status !== "active") throw new Error("Vehicle swap is only allowed for active reservations");
 
+  const newVehicle = getVehicleById(input.toVehicleId, tenantId);
+  if (!newVehicle) throw new Error("Replacement vehicle not found");
+  if (newVehicle.status !== "available") throw new Error("Replacement vehicle is not available");
+
   const swap = {
     fromVehicleId: reservation.vehicleId,
     fromVehicleName: reservation.vehicleName,
@@ -390,6 +457,8 @@ export function swapReservationVehicle(id: string, input: VehicleSwapInput, tena
     toVehiclePlate: input.toVehiclePlate,
     swappedAt: new Date().toISOString(),
     reason: input.reason,
+    reasonType: input.reasonType,
+    fromVehicleCondition: input.fromVehicleCondition,
   };
 
   const updatedReservation: Reservation = {
@@ -398,6 +467,114 @@ export function swapReservationVehicle(id: string, input: VehicleSwapInput, tena
     vehicleName: input.toVehicleName,
     vehiclePlate: input.toVehiclePlate,
     vehicleSwaps: [...(reservation.vehicleSwaps ?? []), swap],
+  };
+
+  getDb()
+    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedReservation), id, tenantId);
+
+  // Update vehicle statuses: outgoing → maintenance (breakdown/accident) or available (other),
+  // incoming → rented.
+  const outgoingStatus = (input.reasonType === "breakdown" || input.reasonType === "accident")
+    ? "maintenance" as const
+    : "available" as const;
+  updateVehicle(reservation.vehicleId, { status: outgoingStatus }, tenantId);
+  updateVehicle(input.toVehicleId, { status: "rented" }, tenantId);
+
+  return updatedReservation;
+}
+
+export function extendReservation(id: string, input: ExtendReservationInput, tenantId: string): Reservation {
+  const reservation = getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status !== "active") throw new Error("Only active reservations can be extended");
+
+  const currentEnd = new Date(`${reservation.endDate}T${reservation.returnTime}`);
+  const newEnd = new Date(`${input.newEndDate}T${input.newReturnTime}`);
+
+  if (Number.isNaN(currentEnd.getTime()) || Number.isNaN(newEnd.getTime())) {
+    throw new Error("Invalid return date or time");
+  }
+  if (newEnd <= currentEnd) {
+    throw new Error("New return date must be after the current return date");
+  }
+
+  // Check for conflicts in the extension window (currentEnd → newEnd + turnaround).
+  const conflict = listReservations(tenantId).find((r) =>
+    r.id !== reservation.id &&
+    r.vehicleId === reservation.vehicleId &&
+    RESERVATION_BLOCKING_STATUSES.includes(r.status) &&
+    reservationBlocksPeriod(r, currentEnd.getTime(), newEnd.getTime() + VEHICLE_TURNAROUND_MS)
+  );
+  if (conflict) throw new Error("Vehicle is already reserved during the extended period");
+
+  const additionalDays = Math.ceil((newEnd.getTime() - currentEnd.getTime()) / (1000 * 60 * 60 * 24));
+  const additionalCost = additionalDays * reservation.dailyRate;
+
+  const extension = {
+    previousEndDate: reservation.endDate,
+    previousReturnTime: reservation.returnTime,
+    newEndDate: input.newEndDate,
+    newReturnTime: input.newReturnTime,
+    additionalCost,
+    extendedAt: new Date().toISOString(),
+  };
+
+  const updatedReservation: Reservation = {
+    ...reservation,
+    endDate: input.newEndDate,
+    returnTime: input.newReturnTime,
+    totalCost: reservation.totalCost + additionalCost,
+    extensions: [...(reservation.extensions ?? []), extension],
+  };
+
+  getDb()
+    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedReservation), id, tenantId);
+
+  return updatedReservation;
+}
+
+export function completeReservationReturn(id: string, input: ReturnChecklistInput, tenantId: string): Reservation {
+  const reservation = getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status !== "active") throw new Error("Only active reservations can be returned");
+
+  const returnChecklist = {
+    ...input,
+    returnPhotos: input.returnPhotos ?? [],
+    completedAt: new Date().toISOString(),
+  };
+
+  const updatedReservation: Reservation = {
+    ...reservation,
+    status: "completed",
+    returnChecklist,
+  };
+
+  getDb()
+    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedReservation), id, tenantId);
+
+  // Update vehicle: mileage + status (maintenance if damaged, available otherwise).
+  const vehicleStatus = input.hasDamage ? "maintenance" as const : "available" as const;
+  updateVehicle(reservation.vehicleId, { mileage: input.returnMileage, status: vehicleStatus }, tenantId);
+
+  return updatedReservation;
+}
+
+export function markReservationPaid(id: string, input: MarkReservationPaidInput, tenantId: string): Reservation {
+  const reservation = getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status === "cancelled") throw new Error("Cannot mark a cancelled reservation as paid");
+  if (reservation.payment) throw new Error("Reservation is already marked as paid");
+
+  const updatedReservation: Reservation = {
+    ...reservation,
+    payment: {
+      paidAt: new Date().toISOString(),
+      method: input.method,
+    },
   };
 
   getDb()

@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   statusColors,
   type Customer,
+  type FuelLevel,
   type Reservation,
   type ReservationStatus,
+  type SwapReasonType,
 } from "@/lib/mock-data";
 import {
   RESERVATION_BLOCKING_STATUSES,
@@ -38,17 +40,21 @@ import {
   X,
   MapPin,
   Calendar,
+  CalendarPlus,
   User,
   Car,
   ChevronRight,
   ChevronLeft,
   Check,
+  CheckCircle,
+  Fuel,
   Navigation,
   Wifi,
   Baby,
   FileText,
   ImagePlus,
   Upload,
+  Wrench,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useVehicles } from "@/lib/use-vehicles";
@@ -117,14 +123,21 @@ export default function ReservationsPage() {
     updateCustomerImages,
     updateReservationImages,
     swapVehicle,
+    extendReservation,
+    completeReturn,
+    markAsPaid,
   } = useReservations({ loadReservations: false });
   const canWrite = useCan("writeReservation");
   const canCancel = useCan("cancelReservation");
   const canSwap = useCan("swapVehicle");
+  const canExtend = useCan("extendReservation");
+  const canCompleteReturn = useCan("completeReturn");
+  const canMarkAsPaid = useCan("markAsPaid");
   const newCustomerFileRef = useRef<HTMLInputElement>(null);
   const newReservationFileRef = useRef<HTMLInputElement>(null);
   const customerDetailFileRef = useRef<HTMLInputElement>(null);
   const reservationDetailFileRef = useRef<HTMLInputElement>(null);
+  const returnPhotosFileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
@@ -147,12 +160,33 @@ export default function ReservationsPage() {
   const [cancelAdjustedCost, setCancelAdjustedCost] = useState("");
   const [showSwapDialog, setShowSwapDialog] = useState(false);
   const [swapReason, setSwapReason] = useState("");
+  const [swapReasonType, setSwapReasonType] = useState<SwapReasonType>("breakdown");
+  const [swapOldCondition, setSwapOldCondition] = useState("");
   const [swapVehicleId, setSwapVehicleId] = useState("");
   const [swapVehicleSearch, setSwapVehicleSearch] = useState("");
   const [swapFilterAvailable, setSwapFilterAvailable] = useState(false);
   const [swapFilterTransmission, setSwapFilterTransmission] = useState("");
   const [swapFilterCategory, setSwapFilterCategory] = useState("");
   const [swapping, setSwapping] = useState(false);
+  // Rental extension
+  const [showExtendDialog, setShowExtendDialog] = useState(false);
+  const [extendDateInput, setExtendDateInput] = useState("");
+  const [extendIsoDate, setExtendIsoDate] = useState("");
+  const [extendReturnTime, setExtendReturnTime] = useState("10:00");
+  const [extending, setExtending] = useState(false);
+  const [extendError, setExtendError] = useState("");
+  // Return checklist
+  const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [returnMileage, setReturnMileage] = useState("");
+  const [returnFuelLevel, setReturnFuelLevel] = useState<FuelLevel>("full");
+  const [returnHasDamage, setReturnHasDamage] = useState(false);
+  const [returnDamageDescription, setReturnDamageDescription] = useState("");
+  const [returnExtraCharges, setReturnExtraCharges] = useState("");
+  const [returnNotes, setReturnNotes] = useState("");
+  const [returnPhotos, setReturnPhotos] = useState<string[]>([]);
+  const [uploadingReturnPhotos, setUploadingReturnPhotos] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [currentTime] = useState(() => Date.now());
   const [newBooking, setNewBooking] = useState(initialBooking);
   const [newCustomer, setNewCustomer] = useState(initialCustomer);
@@ -640,16 +674,89 @@ export default function ReservationsPage() {
         toVehicleName: `${vehicle.make} ${vehicle.model}`,
         toVehiclePlate: vehicle.plate,
         reason: swapReason.trim(),
+        reasonType: swapReasonType,
+        fromVehicleCondition: swapOldCondition.trim() || undefined,
       });
       setSelectedReservation(updatedReservation);
       setReservationsReloadKey((current) => current + 1);
       setShowSwapDialog(false);
       setSwapReason("");
+      setSwapOldCondition("");
       setSwapVehicleId("");
     } catch (error) {
       console.error(error);
     } finally {
       setSwapping(false);
+    }
+  }
+
+  async function handleExtendReservation() {
+    if (!selectedReservation || !extendIsoDate) return;
+    setExtendError("");
+    setExtending(true);
+    try {
+      const updatedReservation = await extendReservation(selectedReservation.id, {
+        newEndDate: extendIsoDate,
+        newReturnTime: extendReturnTime,
+      });
+      setSelectedReservation(updatedReservation);
+      setReservationsReloadKey((current) => current + 1);
+      setShowExtendDialog(false);
+      setExtendDateInput("");
+      setExtendIsoDate("");
+    } catch (error) {
+      setExtendError(error instanceof Error ? error.message : t("res.extensionConflict"));
+    } finally {
+      setExtending(false);
+    }
+  }
+
+  async function handleReturnPhotoFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setUploadingReturnPhotos(true);
+    try {
+      const urls = normalizePhotoUrls(await uploadImages(files, "returns"));
+      if (urls.length) setReturnPhotos((prev) => normalizePhotoUrls([...prev, ...urls]));
+    } finally {
+      setUploadingReturnPhotos(false);
+      if (returnPhotosFileRef.current) returnPhotosFileRef.current.value = "";
+    }
+  }
+
+  async function handleCompleteReturn() {
+    if (!selectedReservation || !returnMileage) return;
+    setCompleting(true);
+    try {
+      const updatedReservation = await completeReturn(selectedReservation.id, {
+        returnMileage: Number(returnMileage),
+        fuelLevel: returnFuelLevel,
+        hasDamage: returnHasDamage,
+        damageDescription: returnHasDamage ? returnDamageDescription.trim() || undefined : undefined,
+        extraCharges: returnExtraCharges !== "" ? Number(returnExtraCharges) : undefined,
+        notes: returnNotes.trim() || undefined,
+        returnPhotos: returnPhotos.length ? returnPhotos : undefined,
+      });
+      setSelectedReservation(updatedReservation);
+      setReservationsReloadKey((current) => current + 1);
+      setShowReturnDialog(false);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  async function handleMarkAsPaid() {
+    if (!selectedReservation) return;
+    setPaying(true);
+    try {
+      const updatedReservation = await markAsPaid(selectedReservation.id);
+      setSelectedReservation(updatedReservation);
+      setReservationsReloadKey((current) => current + 1);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setPaying(false);
     }
   }
 
@@ -750,7 +857,12 @@ export default function ReservationsPage() {
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-bold">&euro;{reservation.totalCost}</p>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <p className="text-sm font-bold">&euro;{reservation.totalCost}</p>
+                      {reservation.payment && (
+                        <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {reservation.extras.length > 0
                         ? reservation.extras.map((extra) => extraLabels[extra] ?? extra).join(", ")
@@ -1504,15 +1616,66 @@ export default function ReservationsPage() {
                   {t("res.created")}: {formatDate(selectedReservation.createdAt)}
                 </p>
 
-                {["pending", "confirmed", "active"].includes(selectedReservation.status) && (canCancel || canSwap) && (
+                {selectedReservation.status !== "cancelled" && !selectedReservation.payment && canMarkAsPaid && (
                   <>
                     <Separator />
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={paying}
+                      onClick={handleMarkAsPaid}
+                    >
+                      <Check className="mr-2 h-4 w-4" />
+                      {paying ? t("res.markingAsPaid") : t("res.markAsPaid")}
+                    </Button>
+                  </>
+                )}
+
+                {["pending", "confirmed", "active"].includes(selectedReservation.status) && (canCancel || canSwap || canExtend || canCompleteReturn) && (
+                  <>
+                    <Separator />
+                    {selectedReservation.status === "active" && canCompleteReturn && (
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          setReturnMileage("");
+                          setReturnFuelLevel("full");
+                          setReturnHasDamage(false);
+                          setReturnDamageDescription("");
+                          setReturnExtraCharges("");
+                          setReturnNotes("");
+                          setReturnPhotos([]);
+                          setShowReturnDialog(true);
+                        }}
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        {t("res.completeReturn")}
+                      </Button>
+                    )}
+                    {selectedReservation.status === "active" && canExtend && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          setExtendDateInput("");
+                          setExtendIsoDate("");
+                          setExtendReturnTime(selectedReservation.returnTime ?? "10:00");
+                          setExtendError("");
+                          setShowExtendDialog(true);
+                        }}
+                      >
+                        <CalendarPlus className="mr-2 h-4 w-4" />
+                        {t("res.extendRental")}
+                      </Button>
+                    )}
                     {selectedReservation.status === "active" && canSwap && (
                       <Button
                         variant="outline"
                         className="w-full"
                         onClick={() => {
                           setSwapReason("");
+                          setSwapReasonType("breakdown");
+                          setSwapOldCondition("");
                           setSwapVehicleId("");
                           setSwapVehicleSearch("");
                           setSwapFilterAvailable(false);
@@ -1552,6 +1715,22 @@ export default function ReservationsPage() {
                   </>
                 )}
 
+                {selectedReservation.extensions && selectedReservation.extensions.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">{t("res.extensionHistory")}</p>
+                      {selectedReservation.extensions.map((ext, i) => (
+                        <div key={i} className="rounded-lg border p-3 text-xs space-y-1">
+                          <p className="text-muted-foreground">{t("res.extendedOn")}: {formatDate(ext.extendedAt.slice(0, 10))}</p>
+                          <p>{formatDate(ext.previousEndDate)} → {formatDate(ext.newEndDate)}</p>
+                          <p className="font-medium">+€{ext.additionalCost}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
                 {selectedReservation.vehicleSwaps && selectedReservation.vehicleSwaps.length > 0 && (
                   <>
                     <Separator />
@@ -1563,11 +1742,88 @@ export default function ReservationsPage() {
                           <p><span className="text-muted-foreground">{t("res.originalVehicle")}:</span> {swap.fromVehicleName} · {swap.fromVehiclePlate}</p>
                           <p><span className="text-muted-foreground">{t("res.replacedWith")}:</span> {swap.toVehicleName} · {swap.toVehiclePlate}</p>
                           <p className="text-muted-foreground italic">{swap.reason}</p>
+                          {swap.fromVehicleCondition && (
+                            <p className="text-muted-foreground italic">{swap.fromVehicleCondition}</p>
+                          )}
                         </div>
                       ))}
                     </div>
                   </>
                 )}
+
+                {selectedReservation.returnChecklist && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">{t("res.returnChecklistSection")}</p>
+                      <div className="rounded-lg border p-3 text-xs space-y-1.5">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("res.returnedAt")}</span>
+                          <span>{formatDate(selectedReservation.returnChecklist.completedAt.slice(0, 10))}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("res.returnedMileage")}</span>
+                          <span>{selectedReservation.returnChecklist.returnMileage.toLocaleString()} km</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("res.fuelLevel")}</span>
+                          <span className="flex items-center gap-1">
+                            <Fuel className="h-3 w-3" />
+                            {t(`res.fuel${selectedReservation.returnChecklist.fuelLevel.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join("")}` as Parameters<typeof t>[0])}
+                          </span>
+                        </div>
+                        {selectedReservation.returnChecklist.hasDamage && (
+                          <div className="pt-1 border-t border-destructive/20">
+                            <p className="text-destructive font-medium flex items-center gap-1">
+                              <Wrench className="h-3 w-3" />
+                              {t("res.damageDescription")}
+                            </p>
+                            {selectedReservation.returnChecklist.damageDescription && (
+                              <p className="text-muted-foreground mt-0.5">{selectedReservation.returnChecklist.damageDescription}</p>
+                            )}
+                          </div>
+                        )}
+                        {!!selectedReservation.returnChecklist.extraCharges && selectedReservation.returnChecklist.extraCharges > 0 && (
+                          <div className="flex justify-between font-medium">
+                            <span className="text-muted-foreground">{t("res.extraCharges")}</span>
+                            <span className="text-destructive">+€{selectedReservation.returnChecklist.extraCharges}</span>
+                          </div>
+                        )}
+                        {selectedReservation.returnChecklist.notes && (
+                          <p className="text-muted-foreground italic pt-1">{selectedReservation.returnChecklist.notes}</p>
+                        )}
+                      </div>
+                      {selectedReservation.returnChecklist.returnPhotos && selectedReservation.returnChecklist.returnPhotos.length > 0 && (
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                          {selectedReservation.returnChecklist.returnPhotos.map((url, i) => (
+                            <div key={url} className="relative aspect-video overflow-hidden rounded-md bg-muted">
+                              <Image src={url} alt={`${t("res.returnPhotos")} ${i + 1}`} fill className="object-cover" unoptimized />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">{t("res.payment")}</p>
+                  {selectedReservation.payment ? (
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                        <Check className="mr-1 h-3 w-3" />
+                        {t("res.paid")}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {t("res.paymentMethodCash")} · {formatDate(selectedReservation.payment.paidAt.slice(0, 10))}
+                      </span>
+                    </div>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      {t("res.unpaid")}
+                    </Badge>
+                  )}
+                </div>
 
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">{t("booking.contractLanguage")}</p>
@@ -1666,6 +1922,210 @@ export default function ReservationsPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showReturnDialog} onOpenChange={(open) => { if (!open) setShowReturnDialog(false); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("res.completeReturnTitle")}</DialogTitle>
+            <DialogDescription>{t("res.completeReturnDesc")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.returnMileage")}</label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="e.g. 45000"
+                value={returnMileage}
+                onChange={(e) => setReturnMileage(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.fuelLevel")}</label>
+              <div className="grid grid-cols-5 gap-1">
+                {(["empty", "quarter", "half", "three_quarter", "full"] as FuelLevel[]).map((level) => {
+                  const labelKey = `res.fuel${level.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join("")}` as Parameters<typeof t>[0];
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setReturnFuelLevel(level)}
+                      className={`rounded-md border py-2 text-xs text-center font-medium transition-colors ${
+                        returnFuelLevel === level
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      {t(labelKey)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="return-has-damage"
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={returnHasDamage}
+                onChange={(e) => setReturnHasDamage(e.target.checked)}
+              />
+              <label htmlFor="return-has-damage" className="text-sm font-medium cursor-pointer">
+                {t("res.hasDamage")}
+              </label>
+            </div>
+            {returnHasDamage && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">{t("res.damageDescription")}</label>
+                <textarea
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder={t("res.damageDescriptionPlaceholder")}
+                  value={returnDamageDescription}
+                  onChange={(e) => setReturnDamageDescription(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.extraCharges")}</label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={returnExtraCharges}
+                onChange={(e) => setReturnExtraCharges(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.returnNotes")}</label>
+              <textarea
+                className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder={t("res.returnNotesPlaceholder")}
+                value={returnNotes}
+                onChange={(e) => setReturnNotes(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.returnPhotos")}</label>
+              <button
+                type="button"
+                disabled={uploadingReturnPhotos}
+                onClick={() => returnPhotosFileRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-3 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                <ImagePlus className="h-4 w-4" />
+                {uploadingReturnPhotos ? t("common.loading") : t("res.addReturnPhotos")}
+              </button>
+              <input
+                ref={returnPhotosFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => void handleReturnPhotoFiles(e.target.files)}
+              />
+              {returnPhotos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {returnPhotos.map((url, i) => (
+                    <div key={url} className="group relative aspect-video overflow-hidden rounded-md bg-muted">
+                      <Image src={url} alt={`${t("res.returnPhotos")} ${i + 1}`} fill className="object-cover" unoptimized />
+                      <button
+                        type="button"
+                        onClick={() => setReturnPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:flex"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowReturnDialog(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={!returnMileage || completing}
+              onClick={handleCompleteReturn}
+            >
+              {completing ? t("res.completing") : t("res.confirmReturn")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showExtendDialog} onOpenChange={(open) => { if (!open) setShowExtendDialog(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("res.extendRentalTitle")}</DialogTitle>
+            <DialogDescription>{t("res.extendRentalDesc")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.newReturnDate")}</label>
+              <EuropeanDateInput
+                displayValue={extendDateInput}
+                isoValue={extendIsoDate}
+                placeholder="dd.MM.yyyy"
+                ariaLabel={t("res.newReturnDate")}
+                onDisplayChange={(v) => {
+                  const next = normalizeEuropeanDateInput(v);
+                  setExtendDateInput(next);
+                  setExtendIsoDate(parseEuropeanDate(next));
+                }}
+                onIsoChange={(v) => {
+                  setExtendDateInput(isoDateToEuropeanInput(v));
+                  setExtendIsoDate(v);
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.newReturnTime")}</label>
+              <Input
+                type="time"
+                value={extendReturnTime}
+                onChange={(e) => setExtendReturnTime(e.target.value)}
+              />
+            </div>
+            {selectedReservation && extendIsoDate && (
+              (() => {
+                const currentEnd = new Date(`${selectedReservation.endDate}T${selectedReservation.returnTime}`);
+                const newEnd = new Date(`${extendIsoDate}T${extendReturnTime}`);
+                const diffMs = newEnd.getTime() - currentEnd.getTime();
+                const extraDays = diffMs > 0 ? Math.ceil(diffMs / (1000 * 60 * 60 * 24)) : 0;
+                const extraCost = extraDays * selectedReservation.dailyRate;
+                return extraDays > 0 ? (
+                  <div className="rounded-lg bg-muted/50 p-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("res.extensionAdditionalCost")}</span>
+                      <span className="font-bold text-primary">+€{extraCost}</span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-muted-foreground">{t("common.total")}</span>
+                      <span className="font-bold">€{selectedReservation.totalCost + extraCost}</span>
+                    </div>
+                  </div>
+                ) : null;
+              })()
+            )}
+            {extendError && (
+              <p className="text-sm text-destructive">{extendError}</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowExtendDialog(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={!extendIsoDate || extending}
+              onClick={handleExtendReservation}
+            >
+              {extending ? t("res.extending") : t("res.extendConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showSwapDialog} onOpenChange={(open) => { if (!open) setShowSwapDialog(false); }}>
         <DialogContent>
           <DialogHeader>
@@ -1674,6 +2134,20 @@ export default function ReservationsPage() {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("res.swapReasonType")}</label>
+              <Select value={swapReasonType} onValueChange={(v) => setSwapReasonType(v as SwapReasonType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="breakdown">{t("res.swapReasonBreakdown")}</SelectItem>
+                  <SelectItem value="accident">{t("res.swapReasonAccident")}</SelectItem>
+                  <SelectItem value="customer_request">{t("res.swapReasonCustomerRequest")}</SelectItem>
+                  <SelectItem value="other">{t("res.swapReasonOther")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <label className="text-sm font-medium">{t("res.swapReason")}</label>
               <Input
                 placeholder={t("res.swapReasonPlaceholder")}
@@ -1681,6 +2155,18 @@ export default function ReservationsPage() {
                 onChange={(e) => setSwapReason(e.target.value)}
               />
             </div>
+            {(swapReasonType === "breakdown" || swapReasonType === "accident") && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">{t("res.swapOldVehicleCondition")}</label>
+                <textarea
+                  className="flex min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder={t("res.swapOldVehicleConditionPlaceholder")}
+                  value={swapOldCondition}
+                  onChange={(e) => setSwapOldCondition(e.target.value)}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium">{t("res.swapVehicleLabel")}</label>
               {(() => {
