@@ -2,6 +2,7 @@ import { updateReservationImages, updateReservationStatus, swapReservationVehicl
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 import { logAction } from "@/lib/audit-db";
+import { canUsePlanFeature } from "@/lib/plan-features";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,7 @@ export async function PATCH(
 ) {
   try {
     const [{ id }, session] = await Promise.all([params, getApiSession()]);
-    const { tenantId, userId, userName, role } = session;
+    const { tenantId, userId, userName, role, plan, featureOverrides } = session;
     const data = await request.json();
 
     let reservation;
@@ -35,6 +36,9 @@ export async function PATCH(
       detail = `Extended return date to ${data.extension.newEndDate} ${data.extension.newReturnTime}`;
     } else if (data.returnChecklist) {
       assertCan(role, "completeReturn");
+      if (!canUsePlanFeature(plan, "returnPhotos", featureOverrides)) {
+        data.returnChecklist.returnPhotos = undefined;
+      }
       reservation = completeReservationReturn(id, data.returnChecklist, tenantId);
       action = "completed_return";
       detail = `Return completed — ${data.returnChecklist.returnMileage} km, fuel: ${data.returnChecklist.fuelLevel}${data.returnChecklist.hasDamage ? ", damage reported" : ""}`;

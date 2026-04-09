@@ -6,7 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { listTenantsWithStats } from "@/lib/auth-db";
 import { verifySession } from "@/lib/session";
 import Link from "next/link";
-import { impersonateTenantAction, toggleTenantActiveAction } from "./actions";
+import { impersonateTenantAction, toggleTenantActiveAction, changeTenantPlanAction } from "./actions";
+import { PLAN_SLUGS, PLAN_LABELS } from "@/lib/plan-features";
 
 function formatCreatedAt(value: string) {
   const [datePart = "", timePart = ""] = value.split(" ");
@@ -105,6 +106,19 @@ export default async function PlatformPage() {
                       </div>
                     </div>
 
+                    <form action={changeTenantPlanAction} className="flex items-center gap-2">
+                      <input type="hidden" name="tenantId" value={tenant.id} />
+                      <select
+                        name="plan"
+                        defaultValue={tenant.plan}
+                        className="flex-1 rounded-md border bg-background px-2 py-1.5 text-sm"
+                      >
+                        {PLAN_SLUGS.map((p) => (
+                          <option key={p} value={p}>{PLAN_LABELS[p]}</option>
+                        ))}
+                      </select>
+                      <Button type="submit" variant="outline" size="sm">Set plan</Button>
+                    </form>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Link
                         href={`/platform/tenants/${tenant.id}/billing`}
@@ -167,7 +181,20 @@ export default async function PlatformPage() {
                       <TableCell>{tenant.active_user_count} / {tenant.user_count}</TableCell>
                       <TableCell>{formatCreatedAt(tenant.created_at)}</TableCell>
                       <TableCell>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end items-center gap-2 flex-wrap">
+                          <form action={changeTenantPlanAction} className="flex items-center gap-1.5">
+                            <input type="hidden" name="tenantId" value={tenant.id} />
+                            <select
+                              name="plan"
+                              defaultValue={tenant.plan}
+                              className="rounded-md border bg-background px-2 py-1 text-xs"
+                            >
+                              {PLAN_SLUGS.map((p) => (
+                                <option key={p} value={p}>{PLAN_LABELS[p]}</option>
+                              ))}
+                            </select>
+                            <Button type="submit" variant="outline" size="sm" className="text-xs h-7">Set</Button>
+                          </form>
                           <Link
                             href={`/platform/tenants/${tenant.id}/billing`}
                             className={buttonVariants({ variant: "outline" })}

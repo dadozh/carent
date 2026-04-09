@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useCan } from "@/lib/role-context";
+import { usePlanFeature } from "@/lib/plan-context";
 import { useI18n } from "@/lib/i18n";
+import { PLAN_LABELS } from "@/lib/plan-features";
+import { usePlan } from "@/lib/plan-context";
 import { type AuditEntityType } from "@/lib/audit-db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +54,8 @@ function actionLabel(action: string) {
 export default function AuditLogPage() {
   const { t } = useI18n();
   const canAccess = useCan("manageSettings");
+  const hasPlan = usePlanFeature("auditLog");
+  const plan = usePlan();
 
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,13 +76,23 @@ export default function AuditLogPage() {
   }, []);
 
   useEffect(() => {
-    if (canAccess) fetchLogs(entityTypeFilter);
-  }, [canAccess, entityTypeFilter, fetchLogs]);
+    if (canAccess && hasPlan) fetchLogs(entityTypeFilter);
+  }, [canAccess, hasPlan, entityTypeFilter, fetchLogs]);
 
   if (!canAccess) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Access denied.</p>
+      </div>
+    );
+  }
+
+  if (!hasPlan) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
+        <ClipboardList className="h-10 w-10 text-muted-foreground" />
+        <p className="font-semibold">Audit Log is not available on the {PLAN_LABELS[plan] ?? plan} plan.</p>
+        <p className="text-sm text-muted-foreground">Upgrade to Enterprise to access the immutable audit trail.</p>
       </div>
     );
   }

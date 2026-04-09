@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useCan } from "@/lib/role-context";
+import { usePlanFeature } from "@/lib/plan-context";
 import { formatDate, formatDateRange } from "@/lib/date-format";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 
@@ -21,6 +22,7 @@ export default function VehicleDetailPage() {
   const { getVehicle, isLoading } = useVehicles();
   const { reservations } = useReservations();
   const canManageFleet = useCan("manageFleet");
+  const hasAnalytics = usePlanFeature("analytics");
   const vehicle = getVehicle(id);
 
   if (isLoading) return <p className="p-6 text-muted-foreground">{t("common.loading")}</p>;
@@ -210,6 +212,7 @@ export default function VehicleDetailPage() {
         </div>
 
         <div className="space-y-6">
+          {hasAnalytics ? (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -239,6 +242,15 @@ export default function VehicleDetailPage() {
               )}
             </CardContent>
           </Card>
+          ) : (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+              <TrendingUp className="h-6 w-6 text-muted-foreground" />
+              <p className="text-sm font-medium">{t("fleet.revenueStats")}</p>
+              <p className="text-xs text-muted-foreground">Available on Pro &amp; Enterprise</p>
+            </CardContent>
+          </Card>
+          )}
 
           <Card>
             <CardHeader>

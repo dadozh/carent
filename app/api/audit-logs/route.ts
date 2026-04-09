@@ -1,13 +1,15 @@
 import { listAuditLogs, type AuditEntityType } from "@/lib/audit-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
+import { assertPlanFeature } from "@/lib/plan-features";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { tenantId, role } = await getApiSession();
+    const { tenantId, role, plan, featureOverrides } = await getApiSession();
     assertCan(role, "manageSettings");
+    assertPlanFeature(plan, "auditLog", featureOverrides);
     const { searchParams } = new URL(request.url);
     const entityType = searchParams.get("entityType") as AuditEntityType | null;
     const limit = Number(searchParams.get("limit") ?? "");

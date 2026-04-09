@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useCan } from "@/lib/role-context";
+import { usePlanFeature } from "@/lib/plan-context";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -14,6 +15,7 @@ export function Sidebar() {
   const { t } = useI18n();
   const canManageUsers = useCan("manageUsers");
   const canManageSettings = useCan("manageSettings");
+  const hasAuditLog = usePlanFeature("auditLog");
 
   const navItems: { href: string; label: string; icon: React.ElementType; exact?: boolean; activeFor?: (p: string) => boolean }[] = [
     { href: "/", label: t("nav.dashboard"), icon: LayoutDashboard, exact: true },
@@ -29,7 +31,7 @@ export function Sidebar() {
     { href: "/book", label: t("nav.bookNow"), icon: Globe2 },
     ...(canManageUsers ? [{ href: "/settings/users", label: t("nav.users"), icon: Users }] : []),
     ...(canManageSettings ? [{ href: "/settings", label: t("nav.settings"), icon: Settings }] : []),
-    ...(canManageSettings ? [{ href: "/audit", label: t("nav.auditLog"), icon: ClipboardList }] : []),
+    ...(canManageSettings && hasAuditLog ? [{ href: "/audit", label: t("nav.auditLog"), icon: ClipboardList }] : []),
   ];
 
   return (

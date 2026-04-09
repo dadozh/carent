@@ -8,7 +8,9 @@ import {
   getTenantById,
   getTenantByIdIncludingInactive,
   setTenantActive,
+  setTenantFeatureOverride,
   updateTenantBillingSettings,
+  updateTenantPlan,
 } from "@/lib/auth-db";
 import { countBillableVehiclesForMonth } from "@/lib/vehicle-db";
 import { createSession, verifySession } from "@/lib/session";
@@ -76,6 +78,24 @@ export async function createTenantAction(
       error: error instanceof Error ? error.message : "Unable to create tenant",
     };
   }
+}
+
+export async function setTenantFeatureOverrideAction(formData: FormData): Promise<void> {
+  await requireSuperAdmin();
+  const tenantId = `${formData.get("tenantId") ?? ""}`;
+  const feature = `${formData.get("feature") ?? ""}`;
+  const value = `${formData.get("value") ?? ""}`;
+  const enabled = value === "on" ? true : value === "off" ? false : null;
+  setTenantFeatureOverride(tenantId, feature, enabled);
+  revalidatePath(`/platform/tenants/${tenantId}/billing`);
+}
+
+export async function changeTenantPlanAction(formData: FormData): Promise<void> {
+  await requireSuperAdmin();
+  const tenantId = `${formData.get("tenantId") ?? ""}`;
+  const plan = `${formData.get("plan") ?? ""}`.trim();
+  updateTenantPlan(tenantId, plan);
+  revalidatePath("/platform");
 }
 
 export async function toggleTenantActiveAction(formData: FormData): Promise<void> {
