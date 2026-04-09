@@ -130,6 +130,7 @@ export default function VehicleDetailPage() {
   ];
 
   function openMaintenanceDialog() {
+    if (!vehicle) return;
     const today = new Date().toISOString().slice(0, 10);
     setMaintenanceDate(today);
     setMaintenanceDateInput(isoDateToEuropeanInput(today));
@@ -142,7 +143,7 @@ export default function VehicleDetailPage() {
   }
 
   async function handleSaveMaintenance() {
-    if (!maintenanceDate || !maintenanceType.trim()) return;
+    if (!vehicle || !maintenanceDate || !maintenanceType.trim()) return;
 
     setSavingMaintenance(true);
     try {

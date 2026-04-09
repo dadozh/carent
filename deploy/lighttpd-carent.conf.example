@@ -1,0 +1,37 @@
+# lighttpd TLS + proxy config for Carent.
+#
+# Prerequisites:
+# - lighttpd modules openssl and proxy must be enabled
+# - kono-bro must be moved to PORT=3001 with HTTPS_ENABLED=false
+# - cert for carent.xidea.ch must exist under /etc/letsencrypt/live/
+#
+# Install:
+#   sudo cp this file /etc/lighttpd/conf-available/90-carent-proxy.conf
+#   sudo ln -s /etc/lighttpd/conf-available/90-carent-proxy.conf \
+#              /etc/lighttpd/conf-enabled/90-carent-proxy.conf
+#   sudo systemctl reload lighttpd
+
+server.modules += ("mod_openssl", "mod_proxy")
+
+# Listen on 443 in addition to the existing port 80.
+$SERVER["socket"] == "0.0.0.0:443" {
+  ssl.engine  = "enable"
+  ssl.pemfile = "/etc/letsencrypt/live/carent.xidea.ch/fullchain.pem"
+  ssl.privkey = "/etc/letsencrypt/live/carent.xidea.ch/privkey.pem"
+
+  # Carent
+  $HTTP["host"] == "carent.xidea.ch" {
+    proxy.server = (
+      "" => (( "host" => "127.0.0.1", "port" => 3002 ))
+    )
+  }
+
+  # kono-bro (moved to internal port 3001)
+  $HTTP["host"] =~ "^(kono-bro1|konobro)\.xidea\.ch$" {
+    ssl.pemfile = "/etc/letsencrypt/live/konobro.xidea.ch/fullchain.pem"
+    ssl.privkey = "/etc/letsencrypt/live/konobro.xidea.ch/privkey.pem"
+    proxy.server = (
+      "" => (( "host" => "127.0.0.1", "port" => 3001 ))
+    )
+  }
+}

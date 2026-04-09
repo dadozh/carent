@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { PLAN_LABELS } from "@/lib/plan-features";
 import { usePlan } from "@/lib/plan-context";
 import { type AuditEntityType } from "@/lib/audit-db";
@@ -116,11 +116,12 @@ export default function AuditLogPage() {
   const pageSize = 25;
 
   const getEntityLabel = useCallback((entityType: AuditEntityType) => {
-    return t(`audit.entityType.${entityType}`);
+    return t(`audit.entityType.${entityType}` as TranslationKey);
   }, [t]);
 
   const getActionLabel = useCallback((action: string) => {
-    const translated = t(`audit.actionType.${action}`);
+    const key = `audit.actionType.${action}` as TranslationKey;
+    const translated = t(key);
     return translated === `audit.actionType.${action}` ? actionLabel(action) : translated;
   }, [t]);
 
@@ -151,46 +152,46 @@ export default function AuditLogPage() {
     if (value === null || value === "") return t("audit.emptyValue");
 
     if (field === "status") {
-      return t(`fleet.status.${value}`);
+      return t(`fleet.status.${value}` as TranslationKey);
     }
 
     if (field === "category") {
-      return t(`fleet.${value}`);
+      return t(`fleet.${value}` as TranslationKey);
     }
 
     if (field === "fuelType") {
-      const fuelMap: Record<string, string> = {
+      const fuelMap: Record<string, TranslationKey> = {
         Gasoline: "vehicleForm.fuel.gasoline",
         Diesel: "vehicleForm.fuel.diesel",
         Hybrid: "vehicleForm.fuel.hybrid",
         Electric: "vehicleForm.fuel.electric",
         LPG: "vehicleForm.fuel.lpg",
       };
-      return typeof value === "string" ? t(fuelMap[value] ?? value) : String(value);
+      return typeof value === "string" ? t(fuelMap[value] ?? (value as TranslationKey)) : String(value);
     }
 
     if (field === "transmission") {
-      const transmissionMap: Record<string, string> = {
+      const transmissionMap: Record<string, TranslationKey> = {
         Automatic: "vehicleForm.transmission.automatic",
         Manual: "vehicleForm.transmission.manual",
         CVT: "vehicleForm.transmission.cvt",
         "Semi-Auto": "vehicleForm.transmission.semiAuto",
       };
-      return typeof value === "string" ? t(transmissionMap[value] ?? value) : String(value);
+      return typeof value === "string" ? t(transmissionMap[value] ?? (value as TranslationKey)) : String(value);
     }
 
     if (field === "location") {
-      const locationMap: Record<string, string> = {
+      const locationMap: Record<string, TranslationKey> = {
         Airport: "public.airport",
         Downtown: "public.downtown",
         Workshop: "vehicleForm.location.workshop",
         Storage: "vehicleForm.location.storage",
       };
-      return typeof value === "string" ? t(locationMap[value] ?? value) : String(value);
+      return typeof value === "string" ? t(locationMap[value] ?? (value as TranslationKey)) : String(value);
     }
 
     if (field === "color") {
-      const colorMap: Record<string, string> = {
+      const colorMap: Record<string, TranslationKey> = {
         White: "vehicleForm.color.white",
         Black: "vehicleForm.color.black",
         Silver: "vehicleForm.color.silver",
@@ -206,7 +207,7 @@ export default function AuditLogPage() {
         Purple: "vehicleForm.color.purple",
         Other: "vehicleForm.color.other",
       };
-      return typeof value === "string" ? t(colorMap[value] ?? value) : String(value);
+      return typeof value === "string" ? t(colorMap[value] ?? (value as TranslationKey)) : String(value);
     }
 
     if (field === "dailyRate") {
@@ -221,13 +222,13 @@ export default function AuditLogPage() {
   }, [t]);
 
   const getMetadataLabel = useCallback((key: string) => {
-    const translated = t(`audit.meta.${key}`);
+    const translated = t(`audit.meta.${key}` as TranslationKey);
     return translated === `audit.meta.${key}` ? key : translated;
   }, [t]);
 
   const formatMetadataValue = useCallback((key: string, value: string) => {
     if (key === "reasonType") {
-      const translated = t(`audit.metaValue.reasonType.${value}`);
+      const translated = t(`audit.metaValue.reasonType.${value}` as TranslationKey);
       return translated === `audit.metaValue.reasonType.${value}` ? value : translated;
     }
 
@@ -251,7 +252,7 @@ export default function AuditLogPage() {
     }
 
     if (key === "paymentMethod") {
-      const translated = t(`audit.metaValue.paymentMethod.${value}`);
+      const translated = t(`audit.metaValue.paymentMethod.${value}` as TranslationKey);
       return translated === `audit.metaValue.paymentMethod.${value}` ? value : translated;
     }
 
@@ -264,7 +265,7 @@ export default function AuditLogPage() {
     }
 
     if (key === "status") {
-      const translated = t(`res.status.${value}`);
+      const translated = t(`res.status.${value}` as TranslationKey);
       return translated === `res.status.${value}` ? value : translated;
     }
 
