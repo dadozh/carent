@@ -21,6 +21,11 @@ export interface AuditLogEntry {
   createdAt: string;
 }
 
+export interface AuditLogActor {
+  userId: string;
+  userName: string;
+}
+
 interface AuditRow {
   id: string;
   tenant_id: string;
@@ -89,8 +94,26 @@ export function logAction(entry: Omit<AuditLogEntry, "id" | "createdAt">): void 
   }
 }
 
-export function listAuditLogs(tenantId: string, options: { entityType?: AuditEntityType; limit?: number } = {}): AuditLogEntry[] {
-  const { entityType, limit = 200 } = options;
+export function countAuditLogs(tenantId: string, options: { entityType?: AuditEntityType } = {}): number {
+  const { entityType } = options;
+
+  let query = "SELECT COUNT(*) as total FROM audit_logs WHERE tenant_id = ?";
+  const params: string[] = [tenantId];
+
+  if (entityType) {
+    query += " AND entity_type = ?";
+    params.push(entityType);
+  }
+
+  const row = getDb().prepare(query).get(...params) as { total: number };
+  return row.total;
+}
+
+export function listAuditLogs(
+  tenantId: string,
+  options: { entityType?: AuditEntityType; userId?: string; dateFrom?: string; dateTo?: string; limit?: number; offset?: number } = {}
+): AuditLogEntry[] {
+  const { entityType, userId, dateFrom, dateTo, limit = 25, offset = 0 } = options;
 
   let query = "SELECT * FROM audit_logs WHERE tenant_id = ?";
   const params: (string | number)[] = [tenantId];
@@ -100,8 +123,24 @@ export function listAuditLogs(tenantId: string, options: { entityType?: AuditEnt
     params.push(entityType);
   }
 
-  query += " ORDER BY created_at DESC LIMIT ?";
+  if (userId) {
+    query += " AND user_id = ?";
+    params.push(userId);
+  }
+
+  if (dateFrom) {
+    query += " AND DATE(created_at) >= DATE(?)";
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    query += " AND DATE(created_at) <= DATE(?)";
+    params.push(dateTo);
+  }
+
+  query += " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?";
   params.push(limit);
+  params.push(offset);
 
   const rows = getDb().prepare(query).all(...params) as AuditRow[];
 
@@ -116,5 +155,53 @@ export function listAuditLogs(tenantId: string, options: { entityType?: AuditEnt
     action: row.action,
     detail: row.detail,
     createdAt: row.created_at,
+  }));
+}
+
+export function countAuditLogsFiltered(
+  tenantId: string,
+  options: { entityType?: AuditEntityType; userId?: string; dateFrom?: string; dateTo?: string } = {}
+): number {
+  const { entityType, userId, dateFrom, dateTo } = options;
+
+  let query = "SELECT COUNT(*) as total FROM audit_logs WHERE tenant_id = ?";
+  const params: string[] = [tenantId];
+
+  if (entityType) {
+    query += " AND entity_type = ?";
+    params.push(entityType);
+  }
+
+  if (userId) {
+    query += " AND user_id = ?";
+    params.push(userId);
+  }
+
+  if (dateFrom) {
+    query += " AND DATE(created_at) >= DATE(?)";
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    query += " AND DATE(created_at) <= DATE(?)";
+    params.push(dateTo);
+  }
+
+  const row = getDb().prepare(query).get(...params) as { total: number };
+  return row.total;
+}
+
+export function listAuditActors(tenantId: string): AuditLogActor[] {
+  const rows = getDb().prepare(`
+    SELECT user_id, MAX(user_name) AS user_name, MAX(created_at) AS last_seen
+    FROM audit_logs
+    WHERE tenant_id = ?
+    GROUP BY user_id
+    ORDER BY last_seen DESC, user_name ASC
+  `).all(tenantId) as Array<{ user_id: string; user_name: string }>;
+
+  return rows.map((row) => ({
+    userId: row.user_id,
+    userName: row.user_name,
   }));
 }

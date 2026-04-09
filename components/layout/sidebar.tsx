@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Car, CalendarDays, LayoutDashboard, ChevronLeft, ChevronRight, Globe2, Library, Users, Settings, Contact, ClipboardList } from "lucide-react";
+import { Car, CalendarDays, LayoutDashboard, ChevronLeft, ChevronRight, Users, Settings, Contact, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
@@ -23,12 +23,10 @@ export function Sidebar() {
       href: "/fleet",
       label: t("nav.fleet"),
       icon: Car,
-      activeFor: (p) => p === "/fleet" || (p.startsWith("/fleet/") && !p.startsWith("/fleet/catalog")),
+      activeFor: (p) => p === "/fleet" || p.startsWith("/fleet/"),
     },
-    { href: "/fleet/catalog", label: t("nav.vehicleCatalog"), icon: Library },
     { href: "/reservations", label: t("nav.reservations"), icon: CalendarDays },
     { href: "/customers", label: t("nav.customers"), icon: Contact },
-    { href: "/book", label: t("nav.bookNow"), icon: Globe2 },
     ...(canManageUsers ? [{ href: "/settings/users", label: t("nav.users"), icon: Users }] : []),
     ...(canManageSettings ? [{ href: "/settings", label: t("nav.settings"), icon: Settings }] : []),
     ...(canManageSettings && hasAuditLog ? [{ href: "/audit", label: t("nav.auditLog"), icon: ClipboardList }] : []),

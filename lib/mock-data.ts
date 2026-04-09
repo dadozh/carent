@@ -46,7 +46,7 @@ export interface Vehicle {
   images: string[];
   lastService: string;
   nextService: string;
-  maintenanceLog: { date: string; type: string; cost: number; notes: string }[];
+  maintenanceLog: { date: string; mileage?: number; type: string; cost: number; notes: string }[];
   rentalHistory: { customerId: string; startDate: string; endDate: string; revenue: number }[];
 }
 

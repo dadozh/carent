@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Car, CalendarDays, LayoutDashboard, Globe2, Library } from "lucide-react";
+import { Car, CalendarDays, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 
@@ -16,11 +16,9 @@ export function MobileBottomNav() {
       href: "/fleet",
       label: t("nav.fleet"),
       icon: Car,
-      activeFor: (p: string) => p === "/fleet" || (p.startsWith("/fleet/") && !p.startsWith("/fleet/catalog")),
+      activeFor: (p: string) => p === "/fleet" || p.startsWith("/fleet/"),
     },
-    { href: "/fleet/catalog", label: t("nav.vehicleCatalog"), icon: Library },
     { href: "/reservations", label: t("nav.reservations"), icon: CalendarDays },
-    { href: "/book", label: t("nav.bookNow"), icon: Globe2 },
   ];
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
-import { Bell, Search, Globe, LogOut, User, Users, Building2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Bell, Globe, LogOut, User, Users, Building2 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useI18n } from "@/lib/i18n";
 import Link from "next/link";
@@ -25,10 +24,7 @@ export function Header({ userName, userEmail, userRole, isImpersonating = false 
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-card px-6">
-      <div className="relative hidden sm:block w-80">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input placeholder={t("common.search") + "..."} className="pl-9" />
-      </div>
+      <div />
 
       <div className="flex items-center gap-4">
         {userRole === "super_admin" && (

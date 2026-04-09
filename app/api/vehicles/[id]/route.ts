@@ -2,8 +2,75 @@ import { getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 import { logAction } from "@/lib/audit-db";
+import type { Vehicle } from "@/lib/mock-data";
 
 export const runtime = "nodejs";
+
+type VehicleAuditField =
+  | "make"
+  | "model"
+  | "trim"
+  | "year"
+  | "category"
+  | "fuelType"
+  | "transmission"
+  | "seats"
+  | "luggageCount"
+  | "color"
+  | "plate"
+  | "vin"
+  | "mileage"
+  | "dailyRate"
+  | "location"
+  | "status";
+
+type VehicleAuditChange = {
+  field: VehicleAuditField;
+  oldValue: string | number | null;
+  newValue: string | number | null;
+};
+
+const AUDITED_VEHICLE_FIELDS: VehicleAuditField[] = [
+  "make",
+  "model",
+  "trim",
+  "year",
+  "category",
+  "fuelType",
+  "transmission",
+  "seats",
+  "luggageCount",
+  "color",
+  "plate",
+  "vin",
+  "mileage",
+  "dailyRate",
+  "location",
+  "status",
+];
+
+function normalizeAuditValue(value: string | number | null | undefined) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  return value ?? null;
+}
+
+function buildVehicleUpdateAuditDetail(before: Vehicle, after: Vehicle) {
+  const changes: VehicleAuditChange[] = AUDITED_VEHICLE_FIELDS.flatMap((field) => {
+    const oldValue = normalizeAuditValue(before[field]);
+    const newValue = normalizeAuditValue(after[field]);
+    if (oldValue === newValue) return [];
+    return [{ field, oldValue, newValue }];
+  });
+
+  return JSON.stringify({
+    summary: `${after.make} ${after.model} (${after.plate})`,
+    subtitle: `#${after.id}`,
+    changes,
+  });
+}
 
 export async function GET(
   _request: Request,
@@ -31,9 +98,20 @@ export async function PATCH(
     const { tenantId, userId, userName, role } = session;
     assertCan(role, "manageFleet");
     const data = await request.json();
+    const existing = getVehicleById(id, tenantId);
+    if (!existing) return Response.json({ error: "Vehicle not found" }, { status: 404 });
     const vehicle = updateVehicle(id, data, tenantId);
     if (!vehicle) return Response.json({ error: "Vehicle not found" }, { status: 404 });
-    logAction({ tenantId, userId, userName, userRole: role, entityType: "vehicle", entityId: id, action: "updated", detail: `${vehicle.make} ${vehicle.model} (${vehicle.plate})` });
+    logAction({
+      tenantId,
+      userId,
+      userName,
+      userRole: role,
+      entityType: "vehicle",
+      entityId: id,
+      action: "updated",
+      detail: buildVehicleUpdateAuditDetail(existing, vehicle),
+    });
     return Response.json({ vehicle });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update vehicle";

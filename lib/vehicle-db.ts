@@ -13,11 +13,6 @@ interface VehicleRow {
   data: string;
 }
 
-interface VehicleLifecycleRow {
-  created_at: string;
-  archived_at: string | null;
-}
-
 let db: Database.Database | null = null;
 
 function getDb() {
@@ -139,6 +134,28 @@ export function updateVehicle(id: string, updates: Partial<Vehicle>, tenantId: s
   }
 
   return vehicle;
+}
+
+export function appendVehicleMaintenanceLog(
+  id: string,
+  entry: { date?: string; mileage?: number; type: string; cost?: number; notes?: string },
+  tenantId: string
+): Vehicle | null {
+  const vehicle = getVehicleById(id, tenantId);
+  if (!vehicle) return null;
+
+  const maintenanceLog = [
+    {
+      date: entry.date ?? new Date().toISOString().slice(0, 10),
+      mileage: entry.mileage,
+      type: entry.type,
+      cost: entry.cost ?? 0,
+      notes: entry.notes ?? "",
+    },
+    ...(vehicle.maintenanceLog ?? []),
+  ];
+
+  return updateVehicle(id, { maintenanceLog }, tenantId);
 }
 
 function getBillingPeriod(billingMonth: string) {

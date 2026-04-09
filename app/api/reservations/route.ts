@@ -2,8 +2,28 @@ import { createReservation, listReservationsWithTotal } from "@/lib/rental-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 import { logAction } from "@/lib/audit-db";
+import type { Reservation } from "@/lib/mock-data";
 
 export const runtime = "nodejs";
+
+function buildReservationAuditDetail(
+  reservation: Reservation,
+  extra: {
+    metadata?: Array<{ key: string; value: string }>;
+    note?: string;
+  } = {}
+) {
+  return JSON.stringify({
+    summary: `${reservation.customerName} - ${reservation.vehicleName}`,
+    subtitle: `#${reservation.id}`,
+    metadata: [
+      { key: "vehiclePlate", value: reservation.vehiclePlate },
+      { key: "period", value: `${reservation.startDate} ${reservation.pickupTime} -> ${reservation.endDate} ${reservation.returnTime}` },
+      ...(extra.metadata ?? []),
+    ],
+    note: extra.note,
+  });
+}
 
 export async function GET(request: Request) {
   try {
@@ -33,7 +53,16 @@ export async function POST(request: Request) {
     assertCan(role, "writeReservation");
     const data = await request.json();
     const reservation = createReservation(data, tenantId);
-    logAction({ tenantId, userId, userName, userRole: role, entityType: "reservation", entityId: reservation.id, action: "created", detail: `${reservation.customerName} — ${reservation.vehicleName} (${reservation.startDate} → ${reservation.endDate})` });
+    logAction({
+      tenantId,
+      userId,
+      userName,
+      userRole: role,
+      entityType: "reservation",
+      entityId: reservation.id,
+      action: "created",
+      detail: buildReservationAuditDetail(reservation),
+    });
     return Response.json({ reservation }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create reservation";

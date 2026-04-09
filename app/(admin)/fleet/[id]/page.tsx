@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { vehicleStatusColors } from "@/lib/mock-data";
 import { useVehicles } from "@/lib/use-vehicles";
 import { useReservations } from "@/lib/use-reservations";
@@ -7,22 +8,35 @@ import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Calendar, Fuel, Gauge, MapPin, Settings, Users, Pencil, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
-import { formatDate, formatDateRange } from "@/lib/date-format";
+import { EuropeanDateInput } from "@/components/ui/european-date-input";
+import { formatDate, formatDateRange, isoDateToEuropeanInput, normalizeEuropeanDateInput, parseEuropeanDate } from "@/lib/date-format";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 
 export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useI18n();
-  const { getVehicle, isLoading } = useVehicles();
+  const { getVehicle, updateVehicle, isLoading } = useVehicles();
   const { reservations } = useReservations();
   const canManageFleet = useCan("manageFleet");
   const hasAnalytics = usePlanFeature("analytics");
+  const [showMaintenanceDialog, setShowMaintenanceDialog] = useState(false);
+  const [maintenanceDateInput, setMaintenanceDateInput] = useState("");
+  const [maintenanceDate, setMaintenanceDate] = useState("");
+  const [maintenanceType, setMaintenanceType] = useState("");
+  const [maintenanceCost, setMaintenanceCost] = useState("");
+  const [maintenanceMileage, setMaintenanceMileage] = useState("");
+  const [maintenanceNotes, setMaintenanceNotes] = useState("");
+  const [maintenanceStatus, setMaintenanceStatus] = useState<"available" | "maintenance">("available");
+  const [savingMaintenance, setSavingMaintenance] = useState(false);
   const vehicle = getVehicle(id);
 
   if (isLoading) return <p className="p-6 text-muted-foreground">{t("common.loading")}</p>;
@@ -115,6 +129,43 @@ export default function VehicleDetailPage() {
     { label: t("fleet.category"), value: getCategoryLabel(vehicle.category), icon: Calendar },
   ];
 
+  function openMaintenanceDialog() {
+    const today = new Date().toISOString().slice(0, 10);
+    setMaintenanceDate(today);
+    setMaintenanceDateInput(isoDateToEuropeanInput(today));
+    setMaintenanceType("");
+    setMaintenanceCost("");
+    setMaintenanceMileage(String(vehicle.mileage));
+    setMaintenanceNotes("");
+    setMaintenanceStatus(vehicle.status === "maintenance" ? "maintenance" : "available");
+    setShowMaintenanceDialog(true);
+  }
+
+  async function handleSaveMaintenance() {
+    if (!maintenanceDate || !maintenanceType.trim()) return;
+
+    setSavingMaintenance(true);
+    try {
+      await updateVehicle(vehicle.id, {
+        status: maintenanceStatus,
+        lastService: maintenanceDate,
+        maintenanceLog: [
+          {
+            date: maintenanceDate,
+            type: maintenanceType.trim(),
+            cost: Number(maintenanceCost) > 0 ? Number(maintenanceCost) : 0,
+            mileage: Number(maintenanceMileage) > 0 ? Number(maintenanceMileage) : vehicle.mileage,
+            notes: maintenanceNotes.trim(),
+          },
+          ...vehicle.maintenanceLog,
+        ],
+      });
+      setShowMaintenanceDialog(false);
+    } finally {
+      setSavingMaintenance(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -186,7 +237,14 @@ export default function VehicleDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>{t("fleet.maintenanceLog")}</CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>{t("fleet.maintenanceLog")}</CardTitle>
+                {canManageFleet && (
+                  <Button variant="outline" size="sm" onClick={openMaintenanceDialog}>
+                    {t("fleet.addMaintenanceEntry")}
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {vehicle.maintenanceLog.length === 0 ? (
@@ -198,6 +256,9 @@ export default function VehicleDetailPage() {
                       <div>
                         <p className="text-sm font-medium">{entry.type}</p>
                         <p className="text-xs text-muted-foreground">{entry.notes}</p>
+                        {typeof entry.mileage === "number" && (
+                          <p className="text-xs text-muted-foreground">{entry.mileage.toLocaleString()} km</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium">&euro;{entry.cost}</p>
@@ -254,22 +315,6 @@ export default function VehicleDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>{t("fleet.serviceSchedule")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground">{t("fleet.lastService")}</p>
-                <p className="text-sm font-medium">{formatDate(vehicle.lastService)}</p>
-              </div>
-              <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground">{t("fleet.nextService")}</p>
-                <p className="text-sm font-medium">{formatDate(vehicle.nextService)}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
               <CardTitle>{t("fleet.rentalHistory")}</CardTitle>
             </CardHeader>
             <CardContent>
@@ -292,6 +337,94 @@ export default function VehicleDetailPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={showMaintenanceDialog} onOpenChange={(open) => { if (!open) setShowMaintenanceDialog(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("fleet.addMaintenanceEntry")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("fleet.maintenanceDate")}</label>
+              <EuropeanDateInput
+                displayValue={maintenanceDateInput}
+                isoValue={maintenanceDate}
+                ariaLabel={t("fleet.maintenanceDate")}
+                onDisplayChange={(value) => {
+                  const next = normalizeEuropeanDateInput(value);
+                  setMaintenanceDateInput(next);
+                  setMaintenanceDate(parseEuropeanDate(next));
+                }}
+                onIsoChange={(value) => {
+                  setMaintenanceDateInput(isoDateToEuropeanInput(value));
+                  setMaintenanceDate(value);
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("fleet.maintenanceType")}</label>
+              <Input
+                value={maintenanceType}
+                onChange={(e) => setMaintenanceType(e.target.value)}
+                placeholder={t("fleet.maintenanceTypePlaceholder")}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("fleet.maintenanceCost")}</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={maintenanceCost}
+                onChange={(e) => setMaintenanceCost(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("fleet.maintenanceMileage")}</label>
+              <Input
+                type="number"
+                min="0"
+                value={maintenanceMileage}
+                onChange={(e) => setMaintenanceMileage(e.target.value)}
+                placeholder={String(vehicle.mileage)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("fleet.maintenanceNotes")}</label>
+              <textarea
+                className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                value={maintenanceNotes}
+                onChange={(e) => setMaintenanceNotes(e.target.value)}
+                placeholder={t("fleet.maintenanceNotesPlaceholder")}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("fleet.statusAfterMaintenance")}</label>
+              <Select value={maintenanceStatus} onValueChange={(value) => setMaintenanceStatus(value as "available" | "maintenance")}>
+                <SelectTrigger>
+                  <SelectValue placeholder={maintenanceStatus === "maintenance" ? t("fleet.status.maintenance") : t("fleet.status.available")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="available">{t("fleet.status.available")}</SelectItem>
+                  <SelectItem value="maintenance">{t("fleet.status.maintenance")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowMaintenanceDialog(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={!maintenanceDate || !maintenanceType.trim() || savingMaintenance}
+              onClick={() => void handleSaveMaintenance()}
+            >
+              {savingMaintenance ? t("common.save") : t("fleet.saveMaintenanceEntry")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

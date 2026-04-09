@@ -6,7 +6,7 @@ import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonT
 import { formatDateTime } from "@/lib/date-format";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
 import { getReservationOutstandingAmount } from "@/lib/reservation-payments";
-import { getVehicleById, updateVehicle } from "@/lib/vehicle-db";
+import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { getTenantSettings } from "@/lib/auth-db";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -529,6 +529,21 @@ export function swapReservationVehicle(id: string, input: VehicleSwapInput, tena
   updateVehicle(reservation.vehicleId, { status: outgoingStatus }, tenantId);
   updateVehicle(input.toVehicleId, { status: "rented" }, tenantId);
 
+  if (input.reasonType === "breakdown" || input.reasonType === "accident") {
+    appendVehicleMaintenanceLog(
+      reservation.vehicleId,
+      {
+        type: input.reasonType === "breakdown" ? "Breakdown" : "Accident / damage",
+        notes: [
+          `Vehicle swapped during reservation #${reservation.id}.`,
+          input.reason.trim(),
+          input.fromVehicleCondition?.trim(),
+        ].filter(Boolean).join(" "),
+      },
+      tenantId
+    );
+  }
+
   return updatedReservation;
 }
 
@@ -607,6 +622,21 @@ export function completeReservationReturn(id: string, input: ReturnChecklistInpu
   // Update vehicle: mileage + status (maintenance if damaged, available otherwise).
   const vehicleStatus = input.hasDamage ? "maintenance" as const : "available" as const;
   updateVehicle(reservation.vehicleId, { mileage: input.returnMileage, status: vehicleStatus }, tenantId);
+
+  if (input.hasDamage) {
+    appendVehicleMaintenanceLog(
+      reservation.vehicleId,
+      {
+        type: "Damage reported on return",
+        notes: [
+          `Reported during return for reservation #${reservation.id}.`,
+          input.damageDescription?.trim(),
+          input.notes?.trim(),
+        ].filter(Boolean).join(" "),
+      },
+      tenantId
+    );
+  }
 
   return updatedReservation;
 }
