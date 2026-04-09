@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { RoleProvider } from "@/lib/role-context";
+import { PlanProvider } from "@/lib/plan-context";
 import { verifySession } from "@/lib/session";
 import { redirect } from "next/navigation";
 
@@ -15,6 +16,7 @@ export default async function AdminLayout({
 
   return (
     <RoleProvider role={session.role}>
+    <PlanProvider plan={session.plan ?? "starter"}>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -28,6 +30,7 @@ export default async function AdminLayout({
         </div>
         <MobileBottomNav />
       </div>
+    </PlanProvider>
     </RoleProvider>
   );
 }

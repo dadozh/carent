@@ -555,6 +555,14 @@ export function setTenantActive(id: string, active: boolean): Tenant | null {
   return result.changes ? getTenantByIdIncludingInactive(id) : null;
 }
 
+export function updateTenantPlan(id: string, plan: string): Tenant {
+  const valid = ["trial", "starter", "pro", "enterprise"];
+  if (!valid.includes(plan)) throw new Error("Invalid plan");
+  const result = getDb().prepare("UPDATE tenants SET plan = ? WHERE id = ?").run(plan, id);
+  if (!result.changes) throw new Error("Tenant not found");
+  return getTenantByIdIncludingInactive(id) as Tenant;
+}
+
 export function verifyPassword(password: string, hash: string): boolean {
   return bcrypt.compareSync(password, hash);
 }

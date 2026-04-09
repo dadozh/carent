@@ -61,6 +61,7 @@ import { useVehicles } from "@/lib/use-vehicles";
 import { useReservations } from "@/lib/use-reservations";
 import { useTenantSettings } from "@/lib/use-tenant-settings";
 import { useCan } from "@/lib/role-context";
+import { usePlanFeature } from "@/lib/plan-context";
 import { uploadFiles } from "@/lib/storage";
 import Image from "next/image";
 import {
@@ -133,6 +134,7 @@ export default function ReservationsPage() {
   const canExtend = useCan("extendReservation");
   const canCompleteReturn = useCan("completeReturn");
   const canMarkAsPaid = useCan("markAsPaid");
+  const hasReturnPhotos = usePlanFeature("returnPhotos");
   const newCustomerFileRef = useRef<HTMLInputElement>(null);
   const newReservationFileRef = useRef<HTMLInputElement>(null);
   const customerDetailFileRef = useRef<HTMLInputElement>(null);
@@ -1793,7 +1795,7 @@ export default function ReservationsPage() {
                           <p className="text-muted-foreground italic pt-1">{selectedReservation.returnChecklist.notes}</p>
                         )}
                       </div>
-                      {selectedReservation.returnChecklist.returnPhotos && selectedReservation.returnChecklist.returnPhotos.length > 0 && (
+                      {hasReturnPhotos && selectedReservation.returnChecklist.returnPhotos && selectedReservation.returnChecklist.returnPhotos.length > 0 && (
                         <div className="mt-2 grid grid-cols-3 gap-2">
                           {selectedReservation.returnChecklist.returnPhotos.map((url, i) => (
                             <div key={url} className="relative aspect-video overflow-hidden rounded-md bg-muted">
@@ -2003,6 +2005,7 @@ export default function ReservationsPage() {
                 onChange={(e) => setReturnNotes(e.target.value)}
               />
             </div>
+            {hasReturnPhotos && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{t("res.returnPhotos")}</label>
               <button
@@ -2039,6 +2042,7 @@ export default function ReservationsPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowReturnDialog(false)}>

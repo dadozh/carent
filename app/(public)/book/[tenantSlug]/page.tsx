@@ -1,5 +1,6 @@
 import { PublicBookingPage } from "@/components/public/booking-page";
 import { getTenantBySlug, getTenantSettings } from "@/lib/auth-db";
+import { canUsePlanFeature } from "@/lib/plan-features";
 import { notFound } from "next/navigation";
 
 export default async function TenantBookingPage({
@@ -11,6 +12,7 @@ export default async function TenantBookingPage({
   const tenant = getTenantBySlug(tenantSlug);
 
   if (!tenant) notFound();
+  if (!canUsePlanFeature(tenant.plan, "publicBooking")) notFound();
 
   const settings = getTenantSettings(tenant.id);
 

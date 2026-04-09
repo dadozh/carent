@@ -11,6 +11,8 @@ export interface SessionPayload {
   email: string;
   homeTenantId?: string;
   isImpersonating?: boolean;
+  /** Populated fresh from DB on every verify — not read from JWT. */
+  plan?: string;
 }
 
 const COOKIE_NAME = "carent_session";
@@ -53,7 +55,8 @@ export async function verifySession(): Promise<SessionPayload | null> {
     if (!user) return null;
     if (!getTenantById(user.tenant_id)) return null;
     if (effectiveTenantId !== user.tenant_id && user.role !== "super_admin") return null;
-    if (!getTenantById(effectiveTenantId)) return null;
+    const tenant = getTenantById(effectiveTenantId);
+    if (!tenant) return null;
 
     return {
       userId: user.id,
@@ -63,6 +66,7 @@ export async function verifySession(): Promise<SessionPayload | null> {
       email: user.email,
       homeTenantId: user.tenant_id,
       isImpersonating: effectiveTenantId !== user.tenant_id,
+      plan: tenant.plan,
     };
   } catch {
     return null;
