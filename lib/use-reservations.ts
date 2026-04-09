@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { Customer, Reservation } from "@/lib/mock-data";
+import type { Customer, CustomerUpdateInput, Reservation } from "@/lib/mock-data";
+
+export type { CustomerUpdateInput };
 
 export type CustomerInput = Omit<Customer, "id" | "verified" | "totalRentals" | "totalSpent" | "images"> & {
   verified?: boolean;
@@ -240,6 +242,24 @@ async function patchCompleteReturn(id: string, returnChecklist: {
   return data.reservation;
 }
 
+async function patchUpdateCustomer(id: string, input: CustomerUpdateInput): Promise<Customer> {
+  const response = await fetch(`/api/customers/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const data = await response.json() as { error?: string };
+    throw new Error(data.error ?? `Failed to update customer: ${response.status}`);
+  }
+
+  const data = await response.json() as { customer: Customer };
+  customersSnapshot = customersSnapshot.map((c) => c.id === data.customer.id ? data.customer : c);
+  emitCustomersChange();
+  return data.customer;
+}
+
 async function patchMarkAsPaid(id: string): Promise<Reservation> {
   const response = await fetch(`/api/reservations/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -319,6 +339,7 @@ export function useReservations({ loadReservations = true }: UseReservationsOpti
   );
 
   const addCustomer = useCallback((data: CustomerInput) => postCustomer(data), []);
+  const updateCustomer = useCallback((id: string, data: CustomerUpdateInput) => patchUpdateCustomer(id, data), []);
   const addReservation = useCallback((data: ReservationInput) => postReservation(data), []);
   const cancelReservation = useCallback((id: string, extra?: { cancellationReason?: string; adjustedCost?: number }) => patchReservationStatus(id, "cancelled", extra), []);
   const swapVehicle = useCallback((id: string, swap: { toVehicleId: string; toVehicleName: string; toVehiclePlate: string; reason: string; reasonType: string; fromVehicleCondition?: string }) => patchVehicleSwap(id, swap), []);
@@ -332,6 +353,7 @@ export function useReservations({ loadReservations = true }: UseReservationsOpti
     reservations: loadReservations ? reservationsStore : EMPTY_RESERVATIONS,
     customers,
     addCustomer,
+    updateCustomer,
     addReservation,
     cancelReservation,
     swapVehicle,

@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import type { Customer, FuelLevel, Reservation, SwapReasonType } from "@/lib/mock-data";
+import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType } from "@/lib/mock-data";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
 import { getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { getTenantSettings } from "@/lib/auth-db";
@@ -286,6 +286,48 @@ export function updateCustomerImages(id: string, images: string[], tenantId: str
   const updatedCustomer: Customer = {
     ...customer,
     images: normalizeImageList(images),
+  };
+
+  getDb()
+    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
+    .run(JSON.stringify(updatedCustomer), id, tenantId);
+
+  return updatedCustomer;
+}
+
+export function updateCustomer(id: string, input: CustomerUpdateInput, tenantId: string): Customer {
+  const customer = getCustomerById(id, tenantId);
+  if (!customer) throw new Error("Customer not found");
+
+  // Validate any required fields being changed
+  const merged = { ...customer, ...input };
+  if (!merged.firstName?.trim()) throw new Error("Customer first name is required");
+  if (!merged.lastName?.trim()) throw new Error("Customer last name is required");
+  if (!merged.email?.trim() || !isValidEmail(merged.email)) throw new Error("Valid customer email is required");
+  if (!merged.phone?.trim() || merged.phone.trim().length < 6) throw new Error("Valid customer phone is required");
+  if (!merged.licenseNumber?.trim()) throw new Error("Customer license number is required");
+  if (!merged.licenseExpiry?.trim()) throw new Error("Customer license expiry is required");
+
+  // Check for duplicates on email/license change, excluding the current customer
+  const emailChanged = input.email && normalize(input.email) !== normalize(customer.email);
+  const licenseChanged = input.licenseNumber && normalize(input.licenseNumber) !== normalize(customer.licenseNumber);
+  if (emailChanged || licenseChanged) {
+    const newEmail = normalize(merged.email);
+    const newLicense = normalize(merged.licenseNumber);
+    const duplicate = listCustomers(tenantId).find(
+      (c) => c.id !== id && (normalize(c.email) === newEmail || normalize(c.licenseNumber) === newLicense)
+    );
+    if (duplicate) throw new Error("A customer with this email or license number already exists");
+  }
+
+  const updatedCustomer: Customer = {
+    ...customer,
+    ...input,
+    // Keep computed fields unchanged
+    id: customer.id,
+    totalRentals: customer.totalRentals,
+    totalSpent: customer.totalSpent,
+    images: customer.images,
   };
 
   getDb()

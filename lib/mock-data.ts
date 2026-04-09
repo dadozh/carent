@@ -57,7 +57,22 @@ export interface Customer {
   totalRentals: number;
   totalSpent: number;
   images: string[];
+  blacklisted?: boolean;
+  internalNotes?: string;
 }
+
+export type CustomerUpdateInput = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  licenseNumber?: string;
+  licenseExpiry?: string;
+  address?: string;
+  verified?: boolean;
+  blacklisted?: boolean;
+  internalNotes?: string;
+};
 
 export interface Reservation {
   id: string;
