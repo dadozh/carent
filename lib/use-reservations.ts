@@ -173,7 +173,7 @@ async function patchReservationStatus(id: string, status: Reservation["status"],
   return data.reservation;
 }
 
-async function patchVehicleSwap(id: string, vehicleSwap: { toVehicleId: string; toVehicleName: string; toVehiclePlate: string; reason: string }): Promise<Reservation> {
+async function patchVehicleSwap(id: string, vehicleSwap: { toVehicleId: string; toVehicleName: string; toVehiclePlate: string; reason: string; reasonType: string; fromVehicleCondition?: string }): Promise<Reservation> {
   const response = await fetch(`/api/reservations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -182,6 +182,54 @@ async function patchVehicleSwap(id: string, vehicleSwap: { toVehicleId: string; 
 
   if (!response.ok) {
     throw new Error(`Failed to swap vehicle: ${response.status}`);
+  }
+
+  const data = await response.json() as { reservation: Reservation };
+  reservationsSnapshot = reservationsSnapshot.map((reservation) =>
+    reservation.id === data.reservation.id ? data.reservation : reservation
+  );
+  emitReservationsChange();
+  return data.reservation;
+}
+
+async function patchExtendReservation(id: string, extension: { newEndDate: string; newReturnTime: string }): Promise<Reservation> {
+  const response = await fetch(`/api/reservations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ extension }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json() as { error?: string };
+    throw new Error(data.error ?? `Failed to extend reservation: ${response.status}`);
+  }
+
+  const data = await response.json() as { reservation: Reservation };
+  reservationsSnapshot = reservationsSnapshot.map((reservation) =>
+    reservation.id === data.reservation.id ? data.reservation : reservation
+  );
+  emitReservationsChange();
+  return data.reservation;
+}
+
+async function patchCompleteReturn(id: string, returnChecklist: {
+  returnMileage: number;
+  fuelLevel: string;
+  hasDamage: boolean;
+  damageDescription?: string;
+  extraCharges?: number;
+  notes?: string;
+  returnPhotos?: string[];
+}): Promise<Reservation> {
+  const response = await fetch(`/api/reservations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ returnChecklist }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json() as { error?: string };
+    throw new Error(data.error ?? `Failed to complete return: ${response.status}`);
   }
 
   const data = await response.json() as { reservation: Reservation };
@@ -253,7 +301,9 @@ export function useReservations({ loadReservations = true }: UseReservationsOpti
   const addCustomer = useCallback((data: CustomerInput) => postCustomer(data), []);
   const addReservation = useCallback((data: ReservationInput) => postReservation(data), []);
   const cancelReservation = useCallback((id: string, extra?: { cancellationReason?: string; adjustedCost?: number }) => patchReservationStatus(id, "cancelled", extra), []);
-  const swapVehicle = useCallback((id: string, swap: { toVehicleId: string; toVehicleName: string; toVehiclePlate: string; reason: string }) => patchVehicleSwap(id, swap), []);
+  const swapVehicle = useCallback((id: string, swap: { toVehicleId: string; toVehicleName: string; toVehiclePlate: string; reason: string; reasonType: string; fromVehicleCondition?: string }) => patchVehicleSwap(id, swap), []);
+  const extendReservation = useCallback((id: string, extension: { newEndDate: string; newReturnTime: string }) => patchExtendReservation(id, extension), []);
+  const completeReturn = useCallback((id: string, returnChecklist: { returnMileage: number; fuelLevel: string; hasDamage: boolean; damageDescription?: string; extraCharges?: number; notes?: string; returnPhotos?: string[] }) => patchCompleteReturn(id, returnChecklist), []);
   const updateCustomerImages = useCallback((id: string, images: string[]) => patchCustomerImages(id, images), []);
   const updateReservationImages = useCallback((id: string, images: string[]) => patchReservationImages(id, images), []);
 
@@ -264,6 +314,8 @@ export function useReservations({ loadReservations = true }: UseReservationsOpti
     addReservation,
     cancelReservation,
     swapVehicle,
+    extendReservation,
+    completeReturn,
     updateCustomerImages,
     updateReservationImages,
     isLoading: (loadReservations && !reservationsLoaded) || !customersLoaded,

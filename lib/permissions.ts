@@ -3,20 +3,24 @@ import type { UserRole } from "@/lib/auth-db";
 /**
  * Permission actions used throughout the app.
  *
- * read          — view any data (fleet, reservations, customers)
+ * read              — view any data (fleet, reservations, customers)
  * writeReservation  — create reservations
  * cancelReservation — cancel active/confirmed reservations
- * swapVehicle   — swap vehicle mid-rental
- * manageFleet   — add / edit / delete vehicles
- * manageUsers   — invite, deactivate, change roles (tenant admin scope)
- * manageSettings — edit tenant settings like booking locations and extras
- * accessPlatform — platform-wide super admin area
+ * swapVehicle       — swap vehicle mid-rental
+ * extendReservation — extend the return date of an active reservation
+ * completeReturn    — complete a vehicle return (closes rental, updates vehicle)
+ * manageFleet       — add / edit / delete vehicles
+ * manageUsers       — invite, deactivate, change roles (tenant admin scope)
+ * manageSettings    — edit tenant settings like booking locations and extras
+ * accessPlatform    — platform-wide super admin area
  */
 export type Action =
   | "read"
   | "writeReservation"
   | "cancelReservation"
   | "swapVehicle"
+  | "extendReservation"
+  | "completeReturn"
   | "manageFleet"
   | "manageUsers"
   | "manageSettings"
@@ -36,6 +40,8 @@ const REQUIRED_ROLE: Record<Action, UserRole> = {
   writeReservation:   "agent",
   cancelReservation:  "manager",
   swapVehicle:        "manager",
+  extendReservation:  "agent",
+  completeReturn:     "agent",
   manageFleet:        "manager",
   manageUsers:        "tenant_admin",
   manageSettings:     "tenant_admin",

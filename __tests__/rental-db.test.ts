@@ -313,3 +313,328 @@ describe("rental-db — reservations", () => {
     ).toThrow("Vehicle not found");
   });
 });
+
+describe("rental-db — vehicle swap enhancements", () => {
+  beforeEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  afterEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  async function seedActiveReservation(tenantId: string, plate = "SWAP-001") {
+    const { createVehicle, getVehicleById } = await getVehicleDb();
+    const { createCustomer, createReservation } = await getRentalDb();
+    const vehicle = createVehicle(vehicleInput({ plate }), tenantId);
+    const customer = createCustomer(customerInput({ email: `${tenantId}@swap.com`, licenseNumber: `LIC-SWAP-${plate}` }), tenantId);
+    const reservation = createReservation({ ...reservationInput(customer.id, vehicle.id), status: "active" as const }, tenantId);
+    return { vehicle, customer, reservation, getVehicleById };
+  }
+
+  it("breakdown swap sets outgoing vehicle to maintenance and incoming to rented", async () => {
+    const { swapReservationVehicle } = await getRentalDb();
+    const { createVehicle, getVehicleById } = await getVehicleDb();
+    const { vehicle: oldVehicle, reservation } = await seedActiveReservation(T1, "OLD-001");
+    const newVehicle = createVehicle(vehicleInput({ plate: "NEW-001" }), T1);
+
+    swapReservationVehicle(reservation.id, {
+      toVehicleId: newVehicle.id,
+      toVehicleName: `${newVehicle.make} ${newVehicle.model}`,
+      toVehiclePlate: newVehicle.plate,
+      reason: "Engine failure",
+      reasonType: "breakdown",
+      fromVehicleCondition: "Engine seized, towed",
+    }, T1);
+
+    expect(getVehicleById(oldVehicle.id, T1)?.status).toBe("maintenance");
+    expect(getVehicleById(newVehicle.id, T1)?.status).toBe("rented");
+  });
+
+  it("accident swap sets outgoing vehicle to maintenance", async () => {
+    const { swapReservationVehicle } = await getRentalDb();
+    const { createVehicle, getVehicleById } = await getVehicleDb();
+    const { vehicle: oldVehicle, reservation } = await seedActiveReservation(T1, "OLD-002");
+    const newVehicle = createVehicle(vehicleInput({ plate: "NEW-002" }), T1);
+
+    swapReservationVehicle(reservation.id, {
+      toVehicleId: newVehicle.id,
+      toVehicleName: `${newVehicle.make} ${newVehicle.model}`,
+      toVehiclePlate: newVehicle.plate,
+      reason: "Front collision",
+      reasonType: "accident",
+    }, T1);
+
+    expect(getVehicleById(oldVehicle.id, T1)?.status).toBe("maintenance");
+    expect(getVehicleById(newVehicle.id, T1)?.status).toBe("rented");
+  });
+
+  it("customer_request swap sets outgoing vehicle back to available", async () => {
+    const { swapReservationVehicle } = await getRentalDb();
+    const { createVehicle, getVehicleById } = await getVehicleDb();
+    const { vehicle: oldVehicle, reservation } = await seedActiveReservation(T1, "OLD-003");
+    const newVehicle = createVehicle(vehicleInput({ plate: "NEW-003" }), T1);
+
+    swapReservationVehicle(reservation.id, {
+      toVehicleId: newVehicle.id,
+      toVehicleName: `${newVehicle.make} ${newVehicle.model}`,
+      toVehiclePlate: newVehicle.plate,
+      reason: "Wants larger car",
+      reasonType: "customer_request",
+    }, T1);
+
+    expect(getVehicleById(oldVehicle.id, T1)?.status).toBe("available");
+    expect(getVehicleById(newVehicle.id, T1)?.status).toBe("rented");
+  });
+
+  it("swap records reasonType and fromVehicleCondition in history", async () => {
+    const { swapReservationVehicle, getReservationById } = await getRentalDb();
+    const { createVehicle } = await getVehicleDb();
+    const { reservation } = await seedActiveReservation(T1, "OLD-004");
+    const newVehicle = createVehicle(vehicleInput({ plate: "NEW-004" }), T1);
+
+    swapReservationVehicle(reservation.id, {
+      toVehicleId: newVehicle.id,
+      toVehicleName: `${newVehicle.make} ${newVehicle.model}`,
+      toVehiclePlate: newVehicle.plate,
+      reason: "Breakdown on highway",
+      reasonType: "breakdown",
+      fromVehicleCondition: "Smoke from engine",
+    }, T1);
+
+    const updated = getReservationById(reservation.id, T1);
+    expect(updated?.vehicleSwaps?.[0]?.reasonType).toBe("breakdown");
+    expect(updated?.vehicleSwaps?.[0]?.fromVehicleCondition).toBe("Smoke from engine");
+  });
+
+  it("swap throws if replacement vehicle is not available", async () => {
+    const { swapReservationVehicle } = await getRentalDb();
+    const { createVehicle } = await getVehicleDb();
+    const { reservation } = await seedActiveReservation(T1, "OLD-005");
+    const rentedVehicle = createVehicle(vehicleInput({ plate: "BUSY-001", status: "rented" }), T1);
+
+    expect(() =>
+      swapReservationVehicle(reservation.id, {
+        toVehicleId: rentedVehicle.id,
+        toVehicleName: `${rentedVehicle.make} ${rentedVehicle.model}`,
+        toVehiclePlate: rentedVehicle.plate,
+        reason: "swap",
+        reasonType: "other",
+      }, T1)
+    ).toThrow("Replacement vehicle is not available");
+  });
+});
+
+describe("rental-db — rental extension", () => {
+  beforeEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  afterEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  async function seedActive(tenantId: string, plate: string) {
+    const { createVehicle } = await getVehicleDb();
+    const { createCustomer, createReservation } = await getRentalDb();
+    const vehicle = createVehicle(vehicleInput({ plate }), tenantId);
+    const customer = createCustomer(customerInput({ email: `${plate}@ext.com`, licenseNumber: `LIC-${plate}` }), tenantId);
+    const reservation = createReservation({ ...reservationInput(customer.id, vehicle.id), status: "active" as const }, tenantId);
+    return { vehicle, customer, reservation };
+  }
+
+  it("extends endDate, updates totalCost, and logs the extension", async () => {
+    const { extendReservation, getReservationById } = await getRentalDb();
+    const { reservation } = await seedActive(T1, "EXT-001");
+
+    const updated = extendReservation(reservation.id, { newEndDate: "2030-06-08", newReturnTime: "10:00" }, T1);
+
+    // Original: 2030-06-01 → 2030-06-05 = 4 days @ 35 = 140
+    // Extension: 2030-06-05 → 2030-06-08 = 3 days @ 35 = 105
+    expect(updated.endDate).toBe("2030-06-08");
+    expect(updated.totalCost).toBe(245);
+    expect(updated.extensions).toHaveLength(1);
+    expect(updated.extensions![0].additionalCost).toBe(105);
+    expect(updated.extensions![0].previousEndDate).toBe("2030-06-05");
+    expect(getReservationById(reservation.id, T1)?.endDate).toBe("2030-06-08");
+  });
+
+  it("rejects extension if new date is not after current return date", async () => {
+    const { extendReservation } = await getRentalDb();
+    const { reservation } = await seedActive(T1, "EXT-002");
+
+    expect(() =>
+      extendReservation(reservation.id, { newEndDate: "2030-06-05", newReturnTime: "10:00" }, T1)
+    ).toThrow("New return date must be after the current return date");
+
+    expect(() =>
+      extendReservation(reservation.id, { newEndDate: "2030-06-03", newReturnTime: "10:00" }, T1)
+    ).toThrow("New return date must be after the current return date");
+  });
+
+  it("rejects extension if another reservation conflicts with the extended period", async () => {
+    const { extendReservation, createReservation } = await getRentalDb();
+    const { reservation, vehicle, customer } = await seedActive(T1, "EXT-003");
+
+    // Book the same vehicle starting 2030-06-07 (inside proposed extension window)
+    createReservation({
+      ...reservationInput(customer.id, vehicle.id),
+      startDate: "2030-06-07",
+      endDate: "2030-06-10",
+      status: "confirmed" as const,
+    }, T1);
+
+    expect(() =>
+      extendReservation(reservation.id, { newEndDate: "2030-06-09", newReturnTime: "10:00" }, T1)
+    ).toThrow("Vehicle is already reserved during the extended period");
+  });
+
+  it("rejects extension for non-active reservations", async () => {
+    const { extendReservation } = await getRentalDb();
+    const { createVehicle } = await getVehicleDb();
+    const { createCustomer, createReservation } = await getRentalDb();
+    const vehicle = createVehicle(vehicleInput({ plate: "EXT-004" }), T1);
+    const customer = createCustomer(customerInput({ email: "ext004@example.com", licenseNumber: "LIC-EXT004" }), T1);
+    const reservation = createReservation({ ...reservationInput(customer.id, vehicle.id), status: "confirmed" as const }, T1);
+
+    expect(() =>
+      extendReservation(reservation.id, { newEndDate: "2030-06-09", newReturnTime: "10:00" }, T1)
+    ).toThrow("Only active reservations can be extended");
+  });
+});
+
+describe("rental-db — return checklist", () => {
+  beforeEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  afterEach(async () => {
+    const { __closeDb: closeR } = await getRentalDb();
+    closeR();
+    const { __closeDb: closeV } = await getVehicleDb();
+    closeV();
+  });
+
+  async function seedActive(tenantId: string, plate: string) {
+    const { createVehicle } = await getVehicleDb();
+    const { createCustomer, createReservation } = await getRentalDb();
+    const vehicle = createVehicle(vehicleInput({ plate }), tenantId);
+    const customer = createCustomer(customerInput({ email: `${plate}@ret.com`, licenseNumber: `LIC-RET-${plate}` }), tenantId);
+    const reservation = createReservation({ ...reservationInput(customer.id, vehicle.id), status: "active" as const }, tenantId);
+    return { vehicle, customer, reservation };
+  }
+
+  it("marks reservation as completed and stores return checklist", async () => {
+    const { completeReservationReturn, getReservationById } = await getRentalDb();
+    const { reservation } = await seedActive(T1, "RET-001");
+
+    const updated = completeReservationReturn(reservation.id, {
+      returnMileage: 15000,
+      fuelLevel: "full",
+      hasDamage: false,
+      notes: "All good",
+    }, T1);
+
+    expect(updated.status).toBe("completed");
+    expect(updated.returnChecklist?.returnMileage).toBe(15000);
+    expect(updated.returnChecklist?.fuelLevel).toBe("full");
+    expect(updated.returnChecklist?.hasDamage).toBe(false);
+    expect(updated.returnChecklist?.notes).toBe("All good");
+    expect(getReservationById(reservation.id, T1)?.status).toBe("completed");
+  });
+
+  it("updates vehicle mileage on return", async () => {
+    const { completeReservationReturn } = await getRentalDb();
+    const { getVehicleById } = await getVehicleDb();
+    const { vehicle, reservation } = await seedActive(T1, "RET-002");
+
+    completeReservationReturn(reservation.id, {
+      returnMileage: 22500,
+      fuelLevel: "half",
+      hasDamage: false,
+    }, T1);
+
+    expect(getVehicleById(vehicle.id, T1)?.mileage).toBe(22500);
+  });
+
+  it("sets vehicle to available when no damage reported", async () => {
+    const { completeReservationReturn } = await getRentalDb();
+    const { getVehicleById } = await getVehicleDb();
+    const { vehicle, reservation } = await seedActive(T1, "RET-003");
+
+    completeReservationReturn(reservation.id, {
+      returnMileage: 11000,
+      fuelLevel: "full",
+      hasDamage: false,
+    }, T1);
+
+    expect(getVehicleById(vehicle.id, T1)?.status).toBe("available");
+  });
+
+  it("sets vehicle to maintenance when damage is reported", async () => {
+    const { completeReservationReturn } = await getRentalDb();
+    const { getVehicleById } = await getVehicleDb();
+    const { vehicle, reservation } = await seedActive(T1, "RET-004");
+
+    completeReservationReturn(reservation.id, {
+      returnMileage: 11500,
+      fuelLevel: "quarter",
+      hasDamage: true,
+      damageDescription: "Rear bumper scratch",
+    }, T1);
+
+    expect(getVehicleById(vehicle.id, T1)?.status).toBe("maintenance");
+    expect(getVehicleById(vehicle.id, T1)?.mileage).toBe(11500);
+  });
+
+  it("rejects return for non-active reservations", async () => {
+    const { completeReservationReturn } = await getRentalDb();
+    const { createVehicle } = await getVehicleDb();
+    const { createCustomer, createReservation } = await getRentalDb();
+    const vehicle = createVehicle(vehicleInput({ plate: "RET-005" }), T1);
+    const customer = createCustomer(customerInput({ email: "ret005@example.com", licenseNumber: "LIC-RET005" }), T1);
+    const reservation = createReservation({ ...reservationInput(customer.id, vehicle.id), status: "confirmed" as const }, T1);
+
+    expect(() =>
+      completeReservationReturn(reservation.id, {
+        returnMileage: 10500,
+        fuelLevel: "full",
+        hasDamage: false,
+      }, T1)
+    ).toThrow("Only active reservations can be returned");
+  });
+
+  it("completed reservation cannot be returned again", async () => {
+    const { completeReservationReturn } = await getRentalDb();
+    const { reservation } = await seedActive(T1, "RET-006");
+
+    completeReservationReturn(reservation.id, {
+      returnMileage: 12000,
+      fuelLevel: "full",
+      hasDamage: false,
+    }, T1);
+
+    expect(() =>
+      completeReservationReturn(reservation.id, {
+        returnMileage: 12100,
+        fuelLevel: "full",
+        hasDamage: false,
+      }, T1)
+    ).toThrow("Only active reservations can be returned");
+  });
+});
