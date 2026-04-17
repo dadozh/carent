@@ -95,7 +95,7 @@ export async function PATCH(
 ) {
   try {
     const [{ id }, session] = await Promise.all([params, getApiSession()]);
-    const { tenantId, userId, userName, role } = session;
+    const { tenantId, userId, userName, role, requestContext } = session;
     assertCan(role, "manageFleet");
     const data = await request.json();
     const existing = getVehicleById(id, tenantId);
@@ -111,6 +111,8 @@ export async function PATCH(
       entityId: id,
       action: "updated",
       detail: buildVehicleUpdateAuditDetail(existing, vehicle),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
     });
     return Response.json({ vehicle });
   } catch (error) {

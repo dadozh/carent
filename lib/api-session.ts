@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { getTenantById, getTenantFeatureOverrides, getUserById } from "@/lib/auth-db";
 import type { FeatureOverrides } from "@/lib/plan-features";
+import { getAuditRequestContext, type AuditRequestContext } from "@/lib/audit-request";
 
 export interface ApiSession {
   tenantId: string;
@@ -9,6 +10,7 @@ export interface ApiSession {
   role: string;
   plan: string;
   featureOverrides: FeatureOverrides;
+  requestContext: AuditRequestContext;
 }
 
 /**
@@ -19,6 +21,7 @@ export interface ApiSession {
  */
 export async function getApiSession(): Promise<ApiSession> {
   const h = await headers();
+  const requestContext = await getAuditRequestContext();
   const tenantId = h.get("x-tenant-id");
   const userId = h.get("x-user-id");
   const headerRole = h.get("x-user-role");
@@ -42,5 +45,6 @@ export async function getApiSession(): Promise<ApiSession> {
     role: user.role,
     plan: tenant.plan,
     featureOverrides: getTenantFeatureOverrides(effectiveTenantId) as FeatureOverrides,
+    requestContext,
   };
 }

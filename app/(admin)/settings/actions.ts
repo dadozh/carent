@@ -1,5 +1,8 @@
 "use server";
 
+import { stringifyAuditDetail } from "@/lib/audit-detail";
+import { logAction } from "@/lib/audit-db";
+import { getAuditRequestContext } from "@/lib/audit-request";
 import { getTenantSettings, updateTenantSettings } from "@/lib/auth-db";
 import { type TranslationKey } from "@/lib/i18n";
 import { can } from "@/lib/permissions";
@@ -34,9 +37,46 @@ export async function updateTenantSettingsAction(
   if (!can(session.role, "manageSettings")) redirect("/");
 
   try {
-    updateTenantSettings(session.tenantId, {
+    const nextSettings = {
       locations: parseList(`${formData.get("locations") ?? ""}`),
       extras: parseList(`${formData.get("extras") ?? ""}`),
+    };
+    const previousSettings = getTenantSettings(session.tenantId);
+    updateTenantSettings(session.tenantId, {
+      locations: nextSettings.locations,
+      extras: nextSettings.extras,
+    });
+    const requestContext = await getAuditRequestContext();
+    logAction({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      userName: session.name,
+      userRole: session.role,
+      entityType: "settings",
+      entityId: session.tenantId,
+      action: "updated_tenant_settings",
+      detail: stringifyAuditDetail({
+        summary: "Tenant settings",
+        subtitle: `#${session.tenantId}`,
+        metadata: [
+          { key: "locationsCount", value: String(nextSettings.locations.length) },
+          { key: "extrasCount", value: String(nextSettings.extras.length) },
+        ],
+        changes: [
+          {
+            field: "locations",
+            oldValue: previousSettings.locations.join(", ") || null,
+            newValue: nextSettings.locations.join(", ") || null,
+          },
+          {
+            field: "extras",
+            oldValue: previousSettings.extras.join(", ") || null,
+            newValue: nextSettings.extras.join(", ") || null,
+          },
+        ],
+      }),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
     });
 
     revalidatePath("/settings");

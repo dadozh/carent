@@ -19,11 +19,22 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId, userId, userName, role } = await getApiSession();
+    const { tenantId, userId, userName, role, requestContext } = await getApiSession();
     assertCan(role, "manageFleet");
     const data = await request.json();
     const vehicle = createVehicle(data, tenantId);
-    logAction({ tenantId, userId, userName, userRole: role, entityType: "vehicle", entityId: vehicle.id, action: "created", detail: `${vehicle.make} ${vehicle.model} (${vehicle.plate})` });
+    logAction({
+      tenantId,
+      userId,
+      userName,
+      userRole: role,
+      entityType: "vehicle",
+      entityId: vehicle.id,
+      action: "created",
+      detail: `${vehicle.make} ${vehicle.model} (${vehicle.plate})`,
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+    });
     return Response.json({ vehicle }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create vehicle";

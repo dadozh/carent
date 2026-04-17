@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { tenantId, userId, userName, role } = await getApiSession();
+    const { tenantId, userId, userName, role, requestContext } = await getApiSession();
     assertCan(role, "writeReservation");
     const data = await request.json();
     const reservation = createReservation(data, tenantId);
@@ -62,6 +62,8 @@ export async function POST(request: Request) {
       entityId: reservation.id,
       action: "created",
       detail: buildReservationAuditDetail(reservation),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
     });
     return Response.json({ reservation }, { status: 201 });
   } catch (error) {

@@ -1,16 +1,21 @@
 import { countAuditLogsFiltered, listAuditActors, listAuditLogs, type AuditCategory, type AuditEntityType } from "@/lib/audit-db";
-import { getApiSession } from "@/lib/api-session";
-import { assertCan } from "@/lib/permissions";
-import { assertPlanFeature } from "@/lib/plan-features";
+import { getTenantByIdIncludingInactive } from "@/lib/auth-db";
+import { verifySession } from "@/lib/session";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { tenantId, role, plan, featureOverrides } = await getApiSession();
-    assertCan(role, "manageSettings");
-    assertPlanFeature(plan, "auditLog", featureOverrides);
+    const session = await verifySession();
+    if (!session) throw new Error("Unauthorized");
+    if (session.role !== "super_admin") throw new Error("Forbidden");
+
     const { searchParams } = new URL(request.url);
+    const tenantId = searchParams.get("tenantId") ?? "";
+    if (!tenantId || !getTenantByIdIncludingInactive(tenantId)) {
+      return Response.json({ error: "Tenant not found" }, { status: 404 });
+    }
+
     const entityType = searchParams.get("entityType") as AuditEntityType | null;
     const category = searchParams.get("category") as AuditCategory | null;
     const userId = searchParams.get("userId") ?? undefined;
@@ -28,23 +33,20 @@ export async function GET(request: Request) {
       dateFrom,
       dateTo,
     };
-    const logs = listAuditLogs(tenantId, {
-      ...options,
-      limit: normalizedPageSize,
-      offset,
-    });
-    const total = countAuditLogsFiltered(tenantId, options);
-    const actors = listAuditActors(tenantId);
+
     return Response.json({
-      logs,
-      actors,
-      total,
+      logs: listAuditLogs(tenantId, { ...options, limit: normalizedPageSize, offset }),
+      actors: listAuditActors(tenantId),
+      total: countAuditLogsFiltered(tenantId, options),
       page: normalizedPage,
       pageSize: normalizedPageSize,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error";
-    const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
+    const status =
+      message === "Unauthorized" ? 401
+      : message === "Forbidden" ? 403
+      : 500;
     return Response.json({ error: message }, { status });
   }
 }

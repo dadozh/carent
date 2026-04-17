@@ -73,6 +73,9 @@ export default async function TenantBillingPage({
         <Link href="/platform" className={buttonVariants({ variant: "outline" })}>
           Back to platform
         </Link>
+        <Link href={`/platform/tenants/${tenantId}/audit`} className={buttonVariants({ variant: "outline" })}>
+          Audit log
+        </Link>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -137,7 +140,7 @@ export default async function TenantBillingPage({
           <CardTitle>Feature overrides</CardTitle>
           <CardDescription>
             Override individual features on or off regardless of plan. Use this for custom deals or testing.
-            "Plan default" removes the override and falls back to what the plan normally grants.
+            &quot;Plan default&quot; removes the override and falls back to what the plan normally grants.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">

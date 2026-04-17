@@ -1,6 +1,9 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { stringifyAuditDetail } from "@/lib/audit-detail";
+import { logAction } from "@/lib/audit-db";
+import { getAuditRequestContext } from "@/lib/audit-request";
 import {
   createTenantInvoice,
   createTenantWithAdmin,
@@ -47,7 +50,7 @@ export async function createTenantAction(
   _prevState: CreateTenantState,
   formData: FormData
 ): Promise<CreateTenantState> {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
 
   const tenantName = `${formData.get("tenantName") ?? ""}`.trim();
   const slug = `${formData.get("slug") ?? ""}`.trim().toLowerCase();
@@ -57,13 +60,34 @@ export async function createTenantAction(
   const tempPassword = generateTemporaryPassword();
 
   try {
-    createTenantWithAdmin({
+    const { tenant } = createTenantWithAdmin({
       tenantName,
       slug,
       adminName,
       adminEmail,
       adminPassword: tempPassword,
       plan,
+    });
+    const requestContext = await getAuditRequestContext();
+    logAction({
+      tenantId: tenant.id,
+      userId: session.userId,
+      userName: session.name,
+      userRole: session.role,
+      entityType: "tenant",
+      entityId: tenant.id,
+      action: "created_tenant",
+      detail: stringifyAuditDetail({
+        summary: tenant.name,
+        subtitle: `#${tenant.id}`,
+        metadata: [
+          { key: "tenantSlug", value: tenant.slug },
+          { key: "plan", value: tenant.plan },
+          { key: "adminEmail", value: adminEmail },
+        ],
+      }),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
     });
 
     revalidatePath("/platform");
@@ -81,20 +105,58 @@ export async function createTenantAction(
 }
 
 export async function setTenantFeatureOverrideAction(formData: FormData): Promise<void> {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
   const tenantId = `${formData.get("tenantId") ?? ""}`;
   const feature = `${formData.get("feature") ?? ""}`;
   const value = `${formData.get("value") ?? ""}`;
   const enabled = value === "on" ? true : value === "off" ? false : null;
   setTenantFeatureOverride(tenantId, feature, enabled);
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId,
+    userId: session.userId,
+    userName: session.name,
+    userRole: session.role,
+    entityType: "settings",
+    entityId: tenantId,
+    action: "updated_feature_override",
+    detail: stringifyAuditDetail({
+      summary: "Feature override",
+      subtitle: `#${tenantId}`,
+      metadata: [
+        { key: "feature", value: feature },
+        { key: "value", value: enabled === null ? "plan" : enabled ? "on" : "off" },
+      ],
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+  });
   revalidatePath(`/platform/tenants/${tenantId}/billing`);
 }
 
 export async function changeTenantPlanAction(formData: FormData): Promise<void> {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
   const tenantId = `${formData.get("tenantId") ?? ""}`;
   const plan = `${formData.get("plan") ?? ""}`.trim();
   updateTenantPlan(tenantId, plan);
+  const tenant = getTenantByIdIncludingInactive(tenantId);
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId,
+    userId: session.userId,
+    userName: session.name,
+    userRole: session.role,
+    entityType: "tenant",
+    entityId: tenantId,
+    action: "changed_tenant_plan",
+    detail: stringifyAuditDetail({
+      summary: tenant?.name ?? "Tenant",
+      subtitle: `#${tenantId}`,
+      metadata: [{ key: "plan", value: plan }],
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+  });
   revalidatePath("/platform");
 }
 
@@ -110,6 +172,23 @@ export async function toggleTenantActiveAction(formData: FormData): Promise<void
   const tenant = setTenantActive(tenantId, nextActive);
 
   if (!tenant) throw new Error("Tenant not found");
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId,
+    userId: session.userId,
+    userName: session.name,
+    userRole: session.role,
+    entityType: "tenant",
+    entityId: tenantId,
+    action: nextActive ? "enabled_tenant" : "disabled_tenant",
+    detail: stringifyAuditDetail({
+      summary: tenant.name,
+      subtitle: `#${tenantId}`,
+      metadata: [{ key: "tenantSlug", value: tenant.slug }],
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+  });
 
   revalidatePath("/platform");
 }
@@ -120,6 +199,23 @@ export async function impersonateTenantAction(formData: FormData): Promise<void>
   const tenant = getTenantById(tenantId);
 
   if (!tenant) throw new Error("Tenant not found or inactive");
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId: tenant.id,
+    userId: session.userId,
+    userName: session.name,
+    userRole: session.role,
+    entityType: "tenant",
+    entityId: tenant.id,
+    action: "started_impersonation",
+    detail: stringifyAuditDetail({
+      summary: tenant.name,
+      subtitle: `#${tenant.id}`,
+      metadata: [{ key: "tenantSlug", value: tenant.slug }],
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+  });
 
   await createSession({
     userId: session.userId,
@@ -140,6 +236,23 @@ export async function stopImpersonationAction(): Promise<void> {
   if (!tenant || tenant.active !== 1) {
     throw new Error("Home tenant is unavailable");
   }
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId: homeTenantId,
+    userId: session.userId,
+    userName: session.name,
+    userRole: session.role,
+    entityType: "tenant",
+    entityId: homeTenantId,
+    action: "stopped_impersonation",
+    detail: stringifyAuditDetail({
+      summary: tenant.name,
+      subtitle: `#${homeTenantId}`,
+      metadata: [{ key: "tenantSlug", value: tenant.slug }],
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+  });
 
   await createSession({
     userId: session.userId,
@@ -156,7 +269,7 @@ export async function updateTenantBillingSettingsAction(
   _prevState: TenantBillingState,
   formData: FormData
 ): Promise<TenantBillingState> {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
 
   const tenantId = `${formData.get("tenantId") ?? ""}`.trim();
   const baseMonthlyPrice = Number(`${formData.get("baseMonthlyPrice") ?? "0"}`);
@@ -166,6 +279,26 @@ export async function updateTenantBillingSettingsAction(
     updateTenantBillingSettings(tenantId, {
       baseMonthlyPrice,
       perVehicleMonthlyPrice,
+    });
+    const requestContext = await getAuditRequestContext();
+    logAction({
+      tenantId,
+      userId: session.userId,
+      userName: session.name,
+      userRole: session.role,
+      entityType: "billing",
+      entityId: tenantId,
+      action: "updated_billing_settings",
+      detail: stringifyAuditDetail({
+        summary: "Tenant billing settings",
+        subtitle: `#${tenantId}`,
+        metadata: [
+          { key: "baseMonthlyPrice", value: String(baseMonthlyPrice) },
+          { key: "perVehicleMonthlyPrice", value: String(perVehicleMonthlyPrice) },
+        ],
+      }),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
     });
 
     revalidatePath(`/platform/tenants/${tenantId}/billing`);
@@ -185,7 +318,7 @@ export async function generateTenantInvoiceAction(
   _prevState: TenantBillingState,
   formData: FormData
 ): Promise<TenantBillingState> {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
 
   const tenantId = `${formData.get("tenantId") ?? ""}`.trim();
   const billingMonth = `${formData.get("billingMonth") ?? ""}`.trim();
@@ -200,6 +333,27 @@ export async function generateTenantInvoiceAction(
       vehicleCount,
       baseMonthlyPrice: pricing.baseMonthlyPrice,
       perVehicleMonthlyPrice: pricing.perVehicleMonthlyPrice,
+    });
+    const requestContext = await getAuditRequestContext();
+    logAction({
+      tenantId,
+      userId: session.userId,
+      userName: session.name,
+      userRole: session.role,
+      entityType: "billing",
+      entityId: tenantId,
+      action: "generated_invoice",
+      detail: stringifyAuditDetail({
+        summary: "Tenant invoice",
+        subtitle: `#${tenantId}`,
+        metadata: [
+          { key: "billingMonth", value: billingMonth },
+          { key: "vehicleCount", value: String(vehicleCount) },
+          { key: "invoiceTotal", value: String(pricing.baseMonthlyPrice + vehicleCount * pricing.perVehicleMonthlyPrice) },
+        ],
+      }),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
     });
 
     revalidatePath(`/platform/tenants/${tenantId}/billing`);

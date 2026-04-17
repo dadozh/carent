@@ -138,8 +138,10 @@ What it does:
 3. creates `.env.production` from the example if missing
 4. generates an `AUTH_SECRET` automatically on first install
 5. installs dependencies
-6. builds the app
-7. starts Carent under PM2 on `127.0.0.1:3002`
+6. loads `.env.production`
+7. runs explicit SQLite migrations against `CARENT_DB_PATH`
+8. builds the app
+9. starts Carent under PM2 on `127.0.0.1:3002`
 
 Resulting layout on the Pi:
 
@@ -168,8 +170,10 @@ What it does:
 1. expects the new package contents to already be copied into `/opt/carent`
 2. preserves `.env.production`
 3. runs dependency install
-4. rebuilds the app
-5. reloads the PM2 process
+4. loads `.env.production`
+5. runs explicit SQLite migrations against `CARENT_DB_PATH`
+6. rebuilds the app
+7. reloads the PM2 process
 
 This upgrade flow preserves:
 
@@ -237,6 +241,38 @@ pm2 status
 pm2 logs carent
 ss -tulpn | grep 3002
 curl -I http://127.0.0.1:3002
+```
+
+## Database migrations
+
+Deploys now use an explicit migration step instead of relying only on lazy runtime schema changes.
+
+Command:
+
+```bash
+npm run migrate
+```
+
+What it does:
+
+- opens the SQLite database at `CARENT_DB_PATH`
+- creates a `schema_migrations` table
+- applies idempotent schema upgrades in order
+- seeds the default tenant and default admin accounts if they are missing
+
+This command is run automatically by both:
+
+- `scripts/pi-install.sh`
+- `scripts/pi-upgrade.sh`
+
+If you need to run it manually on the Pi:
+
+```bash
+cd /opt/carent
+set -a
+. ./.env.production
+set +a
+npm run migrate
 ```
 
 ## lighttpd routing

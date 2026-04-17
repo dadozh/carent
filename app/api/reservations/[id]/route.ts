@@ -32,7 +32,7 @@ export async function PATCH(
 ) {
   try {
     const [{ id }, session] = await Promise.all([params, getApiSession()]);
-    const { tenantId, userId, userName, role, plan, featureOverrides } = session;
+    const { tenantId, userId, userName, role, plan, featureOverrides, requestContext } = session;
     const data = await request.json();
 
     let reservation;
@@ -103,7 +103,18 @@ export async function PATCH(
       });
     }
 
-    logAction({ tenantId, userId, userName, userRole: role, entityType: "reservation", entityId: id, action, detail });
+    logAction({
+      tenantId,
+      userId,
+      userName,
+      userRole: role,
+      entityType: "reservation",
+      entityId: id,
+      action,
+      detail,
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+    });
     return Response.json({ reservation });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update reservation";

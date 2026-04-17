@@ -20,6 +20,13 @@ cd "${APP_DIR}"
 echo "Installing dependencies"
 npm ci
 
+set -a
+. ./.env.production
+set +a
+
+echo "Running database migrations"
+npm run migrate
+
 echo "Building application"
 npm run build
 
