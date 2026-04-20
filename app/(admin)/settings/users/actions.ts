@@ -1,6 +1,9 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { stringifyAuditDetail } from "@/lib/audit-detail";
+import { logAction } from "@/lib/audit-db";
+import { getAuditRequestContext } from "@/lib/audit-request";
 import {
   countActiveUsersByRole,
   createUser,
@@ -55,6 +58,7 @@ function ensureUserCanBeModified(
 ) {
   const user = getUserByIdForTenant(targetUserId, tenantId, { includeInactive: true });
   if (!user) throw new Error("settings.users.error.notFound");
+  if (user.role === "super_admin") throw new Error("settings.users.error.notFound");
   if (user.id === actingUserId) throw new Error("settings.users.error.selfChange");
   return user;
 }
@@ -87,7 +91,27 @@ export async function inviteUserAction(
   try {
     const role = parseRole(formData.get("role"));
     const tempPassword = generateTemporaryPassword();
-    createUser(session.tenantId, email, tempPassword, name, role);
+    const user = createUser(session.tenantId, email, tempPassword, name, role);
+    const requestContext = await getAuditRequestContext();
+    logAction({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      userName: session.name,
+      userRole: session.role,
+      entityType: "user",
+      entityId: user.id,
+      action: "invited_user",
+      detail: stringifyAuditDetail({
+        summary: user.name,
+        subtitle: `#${user.id}`,
+        metadata: [
+          { key: "email", value: user.email },
+          { key: "role", value: user.role },
+        ],
+      }),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+    });
     revalidatePath("/settings/users");
 
     return {
@@ -114,6 +138,26 @@ export async function toggleUserActiveAction(formData: FormData): Promise<void> 
 
   const updatedUser = setUserActive(targetUserId, session.tenantId, nextActive);
   if (!updatedUser) throw new Error("settings.users.error.notFound");
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId: session.tenantId,
+    userId: session.userId,
+    userName: session.name,
+    userRole: session.role,
+    entityType: "user",
+    entityId: updatedUser.id,
+    action: nextActive ? "reactivated_user" : "deactivated_user",
+    detail: stringifyAuditDetail({
+      summary: updatedUser.name,
+      subtitle: `#${updatedUser.id}`,
+      metadata: [
+        { key: "email", value: updatedUser.email },
+        { key: "role", value: updatedUser.role },
+      ],
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+  });
 
   revalidatePath("/settings/users");
 }
@@ -128,6 +172,27 @@ export async function changeUserRoleAction(formData: FormData): Promise<void> {
 
   const updatedUser = updateUserRole(targetUserId, session.tenantId, nextRole);
   if (!updatedUser) throw new Error("settings.users.error.notFound");
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId: session.tenantId,
+    userId: session.userId,
+    userName: session.name,
+    userRole: session.role,
+    entityType: "user",
+    entityId: updatedUser.id,
+    action: "changed_user_role",
+    detail: stringifyAuditDetail({
+      summary: updatedUser.name,
+      subtitle: `#${updatedUser.id}`,
+      metadata: [
+        { key: "email", value: updatedUser.email },
+        { key: "role", value: updatedUser.role },
+      ],
+      note: `Role changed to ${updatedUser.role}`,
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
+  });
 
   revalidatePath("/settings/users");
 }

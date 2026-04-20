@@ -28,12 +28,23 @@ export async function PATCH(
 ) {
   try {
     const [{ id }, session] = await Promise.all([params, getApiSession()]);
-    const { tenantId, userId, userName, role } = session;
+    const { tenantId, userId, userName, role, requestContext } = session;
     assertCan(role, "writeReservation");
     const data = await request.json();
     const customer = updateCustomer(id, data, tenantId);
     const flags = [data.blacklisted ? "blacklisted" : null, data.verified === false ? "unverified" : null].filter(Boolean).join(", ");
-    logAction({ tenantId, userId, userName, userRole: role, entityType: "customer", entityId: id, action: "updated", detail: `${customer.firstName} ${customer.lastName}${flags ? ` — ${flags}` : ""}` });
+    logAction({
+      tenantId,
+      userId,
+      userName,
+      userRole: role,
+      entityType: "customer",
+      entityId: id,
+      action: "updated",
+      detail: `${customer.firstName} ${customer.lastName}${flags ? ` — ${flags}` : ""}`,
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+    });
     return Response.json({ customer });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update customer";

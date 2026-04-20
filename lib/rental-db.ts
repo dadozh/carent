@@ -197,12 +197,21 @@ function parseReservation(row: JsonRow): Reservation {
       }]
     : [];
 
+  const payments = (reservation.payments ?? legacyPayment).filter(
+    (payment) => Number.isFinite(payment.amount) && payment.amount > 0
+  );
+  const lastPayment = payments.at(-1);
+  const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
+
   return {
     ...reservation,
     vehiclePlate: reservation.vehiclePlate ?? "",
     images: normalizeImageList(reservation.images),
-    payments: (reservation.payments ?? legacyPayment).filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0),
-    payment: undefined,
+    payments,
+    // Keep legacy field populated so existing readers stay compatible.
+    payment: lastPayment
+      ? { paidAt: lastPayment.paidAt, method: lastPayment.method, amountPaid: totalPaid }
+      : undefined,
   };
 }
 
@@ -683,17 +692,22 @@ export function markReservationPaid(id: string, input: MarkReservationPaidInput,
     throw new Error("Reservation is already marked as paid");
   }
 
+  const newPayment = {
+    paidAt: new Date().toISOString(),
+    method: input.method,
+    amount: outstandingAmount,
+  };
+  const payments = [...(reservation.payments ?? []), newPayment];
+  const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
   const updatedReservation: Reservation = {
     ...reservation,
-    payments: [
-      ...(reservation.payments ?? []),
-      {
-        paidAt: new Date().toISOString(),
-        method: input.method,
-        amount: outstandingAmount,
-      },
-    ],
-    payment: undefined,
+    payments,
+    // Keep legacy field in sync so existing readers and API consumers don't break.
+    payment: {
+      paidAt: newPayment.paidAt,
+      method: newPayment.method,
+      amountPaid: totalPaid,
+    },
   };
 
   getDb()

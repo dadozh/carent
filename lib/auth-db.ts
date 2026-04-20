@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 
@@ -135,12 +135,39 @@ function getDb(): Database.Database {
       PRIMARY KEY (tenant_id, feature)
     );
   `);
+  // Enforce global email uniqueness. Attempt is best-effort on existing DBs.
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)");
+  } catch {
+    console.warn("[CARENT] Could not create global email uniqueness index — duplicate emails may exist across tenants");
+  }
   seedDefaultTenant();
   return db;
 }
 
 const DEFAULT_TENANT_ID = "t_default";
 const DEFAULT_TENANT_SLUG = "default";
+
+function generateInitialPassword(): string {
+  return `Tmp-${randomUUID().replace(/-/g, "").slice(0, 16)}!`;
+}
+
+function writeCredentialsFile(lines: string[]): void {
+  try {
+    const credPath = path.join(DATA_DIR, "initial-credentials.txt");
+    const content = [
+      "CARENT — Initial Credentials",
+      "Generated on first run. Delete this file after changing passwords.",
+      "",
+      ...lines,
+      "",
+    ].join("\n");
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(credPath, content, { flag: "a" });
+  } catch {
+    // Non-fatal: credentials are also printed to stdout
+  }
+}
 
 function seedDefaultTenant() {
   if (!db) return;
@@ -151,19 +178,22 @@ function seedDefaultTenant() {
     `).run(DEFAULT_TENANT_ID, "CARENT (Default)", DEFAULT_TENANT_SLUG);
   }
 
-  const defaultPassword = "admin1234";
-  const hash = bcrypt.hashSync(defaultPassword, 10);
-
   const existingTenantAdmin = db.prepare(`
     SELECT id FROM users WHERE tenant_id = ? AND email = ?
   `).get(DEFAULT_TENANT_ID, "admin@carent.com");
 
   if (!existingTenantAdmin) {
+    const password = generateInitialPassword();
+    const hash = bcrypt.hashSync(password, 10);
     const adminId = `u_${randomUUID().replace(/-/g, "")}`;
     db.prepare(`
       INSERT INTO users (id, tenant_id, email, password_hash, name, role)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(adminId, DEFAULT_TENANT_ID, "admin@carent.com", hash, "Admin", "tenant_admin");
+
+    const msg = `Tenant admin   email=admin@carent.com  password=${password}`;
+    console.log(`\n[CARENT] ${msg}`);
+    writeCredentialsFile([msg]);
   }
 
   const existingPlatformAdmin = db.prepare(`
@@ -171,17 +201,17 @@ function seedDefaultTenant() {
   `).get(DEFAULT_TENANT_ID, "platform@carent.com");
 
   if (!existingPlatformAdmin) {
+    const password = generateInitialPassword();
+    const hash = bcrypt.hashSync(password, 10);
     const platformAdminId = `u_${randomUUID().replace(/-/g, "")}`;
     db.prepare(`
       INSERT INTO users (id, tenant_id, email, password_hash, name, role)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(platformAdminId, DEFAULT_TENANT_ID, "platform@carent.com", hash, "Platform Admin", "super_admin");
 
-    console.log("\n╔══════════════════════════════════════════╗");
-    console.log("║      CARENT — Default platform login      ║");
-    console.log("║  Email:    platform@carent.com            ║");
-    console.log(`║  Password: ${defaultPassword}                    ║`);
-    console.log("╚══════════════════════════════════════════╝\n");
+    const msg = `Platform admin  email=platform@carent.com  password=${password}`;
+    console.log(`[CARENT] ${msg}\n`);
+    writeCredentialsFile([msg]);
   }
 }
 
@@ -440,12 +470,14 @@ export function listTenantsWithStats(): TenantWithStats[] {
 
 export function listUsersByTenant(
   tenantId: string,
-  options?: { includeInactive?: boolean }
+  options?: { includeInactive?: boolean; includeSuperAdmin?: boolean }
 ): User[] {
   const includeInactive = options?.includeInactive ?? true;
+  const includeSuperAdmin = options?.includeSuperAdmin ?? false;
+  const roleFilter = includeSuperAdmin ? "" : " AND role != 'super_admin'";
   const query = includeInactive
-    ? "SELECT * FROM users WHERE tenant_id = ? ORDER BY active DESC, role, name"
-    : "SELECT * FROM users WHERE tenant_id = ? AND active = 1 ORDER BY role, name";
+    ? `SELECT * FROM users WHERE tenant_id = ?${roleFilter} ORDER BY active DESC, role, name`
+    : `SELECT * FROM users WHERE tenant_id = ? AND active = 1${roleFilter} ORDER BY role, name`;
 
   return getDb().prepare(query).all(tenantId) as User[];
 }
@@ -514,16 +546,18 @@ export function createUser(tenantId: string, email: string, password: string, na
   if (!name.trim()) throw new Error("User name is required");
   if (!password || password.length < 8) throw new Error("Password must be at least 8 characters");
   if (!isValidTenantUserRole(role)) throw new Error("Invalid user role");
+  const normalized = normalizeEmail(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) throw new Error("Valid email address is required");
 
   const id = `u_${randomUUID().replace(/-/g, "")}`;
   const hash = bcrypt.hashSync(password, 10);
   try {
     getDb().prepare(`
       INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, tenantId, normalizeEmail(email), hash, name.trim(), role);
+    `).run(id, tenantId, normalized, hash, name.trim(), role);
   } catch (error) {
     if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) {
-      throw new Error("A user with this email already exists in this tenant");
+      throw new Error("A user with this email already exists");
     }
     throw error;
   }

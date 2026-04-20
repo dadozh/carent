@@ -126,6 +126,12 @@ export default async function PlatformPage() {
                       >
                         Billing
                       </Link>
+                      <Link
+                        href={`/platform/tenants/${tenant.id}/audit`}
+                        className={buttonVariants({ variant: "outline" })}
+                      >
+                        Audit
+                      </Link>
                       <form action={impersonateTenantAction}>
                         <input type="hidden" name="tenantId" value={tenant.id} />
                         <Button type="submit" disabled={tenant.active !== 1}>Impersonate</Button>
@@ -200,6 +206,12 @@ export default async function PlatformPage() {
                             className={buttonVariants({ variant: "outline" })}
                           >
                             Billing
+                          </Link>
+                          <Link
+                            href={`/platform/tenants/${tenant.id}/audit`}
+                            className={buttonVariants({ variant: "outline" })}
+                          >
+                            Audit
                           </Link>
                           <form action={impersonateTenantAction}>
                             <input type="hidden" name="tenantId" value={tenant.id} />

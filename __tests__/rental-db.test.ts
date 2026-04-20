@@ -700,8 +700,9 @@ describe("rental-db — payment tracking", () => {
     const updated = markReservationPaid(reservation.id, { method: "cash" }, T1);
     const after = new Date().toISOString();
 
-    expect(updated.payment?.paidAt >= before).toBe(true);
-    expect(updated.payment?.paidAt <= after).toBe(true);
+    expect(updated.payment?.paidAt).toBeTruthy();
+    expect(updated.payment!.paidAt >= before).toBe(true);
+    expect(updated.payment!.paidAt <= after).toBe(true);
   });
 
   it("marks a completed reservation as paid", async () => {

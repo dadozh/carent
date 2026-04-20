@@ -1,5 +1,8 @@
 "use server";
 
+import { stringifyAuditDetail } from "@/lib/audit-detail";
+import { logAction } from "@/lib/audit-db";
+import { getAuditRequestContext } from "@/lib/audit-request";
 import { getTenantById, getUserByEmail, verifyPassword } from "@/lib/auth-db";
 import { createSession } from "@/lib/session";
 import { redirect } from "next/navigation";
@@ -32,6 +35,23 @@ export async function loginAction(
     role: user.role,
     name: user.name,
     email: user.email,
+  });
+  const requestContext = await getAuditRequestContext();
+  logAction({
+    tenantId: user.tenant_id,
+    userId: user.id,
+    userName: user.name,
+    userRole: user.role,
+    entityType: "user",
+    entityId: user.id,
+    action: "signed_in",
+    detail: stringifyAuditDetail({
+      summary: user.name,
+      subtitle: `#${user.id}`,
+      metadata: [{ key: "email", value: user.email }],
+    }),
+    ipAddress: requestContext.ipAddress,
+    userAgent: requestContext.userAgent,
   });
 
   redirect(next);

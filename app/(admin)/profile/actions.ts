@@ -1,5 +1,8 @@
 "use server";
 
+import { stringifyAuditDetail } from "@/lib/audit-detail";
+import { logAction } from "@/lib/audit-db";
+import { getAuditRequestContext } from "@/lib/audit-request";
 import { getUserById, updateUserPassword, verifyPassword } from "@/lib/auth-db";
 import { verifySession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
@@ -46,6 +49,23 @@ export async function changePasswordAction(
 
   try {
     updateUserPassword(user.id, newPassword);
+    const requestContext = await getAuditRequestContext();
+    logAction({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      userName: session.name,
+      userRole: session.role,
+      entityType: "user",
+      entityId: user.id,
+      action: "changed_password",
+      detail: stringifyAuditDetail({
+        summary: user.name,
+        subtitle: `#${user.id}`,
+        metadata: [{ key: "email", value: user.email }],
+      }),
+      ipAddress: requestContext.ipAddress,
+      userAgent: requestContext.userAgent,
+    });
     revalidatePath("/profile");
     return { success: "Password updated successfully." };
   } catch (error) {
