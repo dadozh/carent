@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const { tenantId, role } = await getApiSession();
     assertCan(role, "read");
-    return Response.json({ customers: listCustomers(tenantId) });
+    return Response.json({ customers: await listCustomers(tenantId) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error";
     const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
@@ -22,8 +22,8 @@ export async function POST(request: Request) {
     const { tenantId, userId, userName, role, requestContext } = await getApiSession();
     assertCan(role, "writeReservation");
     const data = await request.json();
-    const customer = createCustomer(data, tenantId);
-    logAction({
+    const customer = await createCustomer(data, tenantId);
+    void logAction({
       tenantId,
       userId,
       userName,
@@ -48,7 +48,7 @@ export async function PATCH(request: Request) {
     const { tenantId, role } = await getApiSession();
     assertCan(role, "writeReservation");
     const data = await request.json();
-    const customer = updateCustomerImages(data.id, data.images ?? [], tenantId);
+    const customer = await updateCustomerImages(data.id, data.images ?? [], tenantId);
     return Response.json({ customer });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update customer";

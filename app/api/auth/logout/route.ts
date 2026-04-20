@@ -8,7 +8,7 @@ export async function POST(): Promise<never> {
   const session = await verifySession();
   if (session) {
     const requestContext = await getAuditRequestContext();
-    logAction({
+    void logAction({
       tenantId: session.tenantId,
       userId: session.userId,
       userName: session.name,

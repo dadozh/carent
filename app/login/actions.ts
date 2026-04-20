@@ -21,11 +21,11 @@ export async function loginAction(
     return { error: "Email and password are required." };
   }
 
-  const user = getUserByEmail(email);
+  const user = await getUserByEmail(email);
   if (!user || !verifyPassword(password, user.password_hash)) {
     return { error: "Invalid email or password." };
   }
-  if (!getTenantById(user.tenant_id)) {
+  if (!await getTenantById(user.tenant_id)) {
     return { error: "This tenant is disabled." };
   }
 
@@ -37,7 +37,7 @@ export async function loginAction(
     email: user.email,
   });
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId: user.tenant_id,
     userId: user.id,
     userName: user.name,

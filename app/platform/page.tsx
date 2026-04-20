@@ -19,8 +19,8 @@ function formatCreatedAt(value: string) {
 
 export default async function PlatformPage() {
   const session = await verifySession();
-  const tenants = listTenantsWithStats();
-  const activeTenants = tenants.filter((tenant) => tenant.active === 1).length;
+  const tenants = await listTenantsWithStats();
+  const activeTenants = tenants.filter((tenant) => tenant.active).length;
   const disabledTenants = tenants.length - activeTenants;
   const totalUsers = tenants.reduce((sum, tenant) => sum + tenant.user_count, 0);
 
@@ -102,7 +102,7 @@ export default async function PlatformPage() {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Created</p>
-                        <p className="font-medium">{formatCreatedAt(tenant.created_at)}</p>
+                        <p className="font-medium">{formatCreatedAt(tenant.createdAt)}</p>
                       </div>
                     </div>
 
@@ -134,7 +134,7 @@ export default async function PlatformPage() {
                       </Link>
                       <form action={impersonateTenantAction}>
                         <input type="hidden" name="tenantId" value={tenant.id} />
-                        <Button type="submit" disabled={tenant.active !== 1}>Impersonate</Button>
+                        <Button type="submit" disabled={!tenant.active}>Impersonate</Button>
                       </form>
                       <form action={toggleTenantActiveAction}>
                         <input type="hidden" name="tenantId" value={tenant.id} />
@@ -142,7 +142,7 @@ export default async function PlatformPage() {
                         <Button
                           type="submit"
                           variant={tenant.active ? "destructive" : "secondary"}
-                          disabled={tenant.active === 1 && !canDisable}
+                          disabled={tenant.active && !canDisable}
                         >
                           {tenant.active ? "Disable" : "Enable"}
                         </Button>
@@ -185,7 +185,7 @@ export default async function PlatformPage() {
                       </TableCell>
                       <TableCell className="capitalize">{tenant.plan}</TableCell>
                       <TableCell>{tenant.active_user_count} / {tenant.user_count}</TableCell>
-                      <TableCell>{formatCreatedAt(tenant.created_at)}</TableCell>
+                      <TableCell>{formatCreatedAt(tenant.createdAt)}</TableCell>
                       <TableCell>
                         <div className="flex justify-end items-center gap-2 flex-wrap">
                           <form action={changeTenantPlanAction} className="flex items-center gap-1.5">
@@ -215,7 +215,7 @@ export default async function PlatformPage() {
                           </Link>
                           <form action={impersonateTenantAction}>
                             <input type="hidden" name="tenantId" value={tenant.id} />
-                            <Button type="submit" disabled={tenant.active !== 1}>Impersonate</Button>
+                            <Button type="submit" disabled={!tenant.active}>Impersonate</Button>
                           </form>
                           <form action={toggleTenantActiveAction}>
                             <input type="hidden" name="tenantId" value={tenant.id} />
@@ -223,7 +223,7 @@ export default async function PlatformPage() {
                             <Button
                               type="submit"
                               variant={tenant.active ? "destructive" : "secondary"}
-                              disabled={tenant.active === 1 && !canDisable}
+                              disabled={tenant.active && !canDisable}
                             >
                               {tenant.active ? "Disable" : "Enable"}
                             </Button>

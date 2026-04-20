@@ -5,8 +5,8 @@ import { listVehicles } from "@/lib/vehicle-db";
 
 export const runtime = "nodejs";
 
-function getPublicTenantOrThrow(tenantSlug: string) {
-  const tenant = getTenantBySlug(tenantSlug);
+async function getPublicTenantOrThrow(tenantSlug: string) {
+  const tenant = await getTenantBySlug(tenantSlug);
   if (!tenant) throw new Error("Tenant not found");
   return tenant;
 }
@@ -17,15 +17,15 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = getPublicTenantOrThrow(tenantSlug);
+    const tenant = await getPublicTenantOrThrow(tenantSlug);
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("startDate") ?? "";
     const endDate = searchParams.get("endDate") ?? "";
     const periodStart = startDate ? new Date(`${startDate}T09:00`).getTime() : Number.NaN;
     const periodEnd = endDate ? new Date(`${endDate}T09:00`).getTime() : Number.NaN;
-    const reservations = startDate && endDate ? listReservations(tenant.id) : [];
+    const reservations = startDate && endDate ? await listReservations(tenant.id) : [];
 
-    const vehicles = listVehicles(tenant.id).filter((vehicle) => {
+    const vehicles = (await listVehicles(tenant.id)).filter((vehicle) => {
       if (vehicle.status !== "available") return false;
       if (!startDate || !endDate) return true;
 
@@ -101,13 +101,13 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = getPublicTenantOrThrow(tenantSlug);
+    const tenant = await getPublicTenantOrThrow(tenantSlug);
     const data = await request.json();
     const validationError = validatePublicBookingInput(data);
     if (validationError) {
       return Response.json({ error: validationError }, { status: 422 });
     }
-    const reservation = createPublicReservation(data, tenant.id);
+    const reservation = await createPublicReservation(data, tenant.id);
     return Response.json({ reservation }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create booking";

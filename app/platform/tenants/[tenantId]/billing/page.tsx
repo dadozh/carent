@@ -49,15 +49,17 @@ export default async function TenantBillingPage({
   params: Promise<{ tenantId: string }>;
 }) {
   const { tenantId } = await params;
-  const tenant = getTenantByIdIncludingInactive(tenantId);
+  const tenant = await getTenantByIdIncludingInactive(tenantId);
 
   if (!tenant) notFound();
 
-  const billingSettings = getTenantBillingSettings(tenantId);
-  const invoices = listTenantInvoices(tenantId);
-  const featureOverrides = getTenantFeatureOverrides(tenantId) as FeatureOverrides;
   const currentBillingMonth = getCurrentBillingMonth();
-  const projectedVehicleCount = countBillableVehiclesForMonth(tenantId, currentBillingMonth);
+  const [billingSettings, invoices, featureOverrides, projectedVehicleCount] = await Promise.all([
+    getTenantBillingSettings(tenantId),
+    listTenantInvoices(tenantId),
+    getTenantFeatureOverrides(tenantId),
+    countBillableVehiclesForMonth(tenantId, currentBillingMonth),
+  ]);
   const projectedMonthlyTotal =
     billingSettings.baseMonthlyPrice + (projectedVehicleCount * billingSettings.perVehicleMonthlyPrice);
 

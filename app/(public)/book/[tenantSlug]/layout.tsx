@@ -10,7 +10,7 @@ export default async function TenantPublicLayout({
   params: Promise<{ tenantSlug: string }>;
 }) {
   const { tenantSlug } = await params;
-  const tenant = getTenantBySlug(tenantSlug);
+  const tenant = await getTenantBySlug(tenantSlug);
 
   return (
     <div className="min-h-screen flex flex-col">

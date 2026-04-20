@@ -41,13 +41,13 @@ export async function updateTenantSettingsAction(
       locations: parseList(`${formData.get("locations") ?? ""}`),
       extras: parseList(`${formData.get("extras") ?? ""}`),
     };
-    const previousSettings = getTenantSettings(session.tenantId);
-    updateTenantSettings(session.tenantId, {
+    const previousSettings = await getTenantSettings(session.tenantId);
+    await updateTenantSettings(session.tenantId, {
       locations: nextSettings.locations,
       extras: nextSettings.extras,
     });
     const requestContext = await getAuditRequestContext();
-    logAction({
+    void logAction({
       tenantId: session.tenantId,
       userId: session.userId,
       userName: session.name,
@@ -97,5 +97,5 @@ export async function getTenantSettingsForPage() {
   const session = await verifySession();
   if (!session) redirect("/login");
   if (!can(session.role, "manageSettings")) redirect("/");
-  return getTenantSettings(session.tenantId);
+  return await getTenantSettings(session.tenantId);
 }

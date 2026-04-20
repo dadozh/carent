@@ -18,12 +18,14 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const requestedLocale = searchParams.get("lang");
     const locale: Locale = requestedLocale === "sr" ? "sr" : "en";
-    const reservation = getReservationById(id, tenantId);
+    const reservation = await getReservationById(id, tenantId);
 
     if (!reservation) return Response.json({ error: "Reservation not found" }, { status: 404 });
 
-    const customer = getCustomerById(reservation.customerId, tenantId);
-    const vehicle = getVehicleById(reservation.vehicleId, tenantId);
+    const [customer, vehicle] = await Promise.all([
+      getCustomerById(reservation.customerId, tenantId),
+      getVehicleById(reservation.vehicleId, tenantId),
+    ]);
 
     if (!customer) return Response.json({ error: "Reservation customer not found" }, { status: 404 });
     if (!vehicle) return Response.json({ error: "Reservation vehicle not found" }, { status: 404 });

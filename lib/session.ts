@@ -52,13 +52,13 @@ export async function verifySession(): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
     const session = payload as unknown as SessionPayload;
-    const user = getUserById(session.userId);
+    const user = await getUserById(session.userId);
     const effectiveTenantId = session.tenantId;
 
     if (!user) return null;
-    if (!getTenantById(user.tenant_id)) return null;
+    if (!await getTenantById(user.tenant_id)) return null;
     if (effectiveTenantId !== user.tenant_id && user.role !== "super_admin") return null;
-    const tenant = getTenantById(effectiveTenantId);
+    const tenant = await getTenantById(effectiveTenantId);
     if (!tenant) return null;
 
     return {
@@ -70,7 +70,7 @@ export async function verifySession(): Promise<SessionPayload | null> {
       homeTenantId: user.tenant_id,
       isImpersonating: effectiveTenantId !== user.tenant_id,
       plan: tenant.plan,
-      featureOverrides: getTenantFeatureOverrides(effectiveTenantId) as FeatureOverrides,
+      featureOverrides: await getTenantFeatureOverrides(effectiveTenantId) as FeatureOverrides,
     };
   } catch {
     return null;

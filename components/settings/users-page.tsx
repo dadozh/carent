@@ -17,7 +17,7 @@ type User = {
   name: string;
   email: string;
   role: UserRole;
-  active: number;
+  active: boolean;
   created_at: string;
 };
 
@@ -34,7 +34,7 @@ function formatCreatedAt(value: string) {
 
 function canMutateUser(targetUser: User, currentUserId: string, activeTenantAdmins: number) {
   if (targetUser.id === currentUserId) return false;
-  if (targetUser.role === "tenant_admin" && targetUser.active === 1 && activeTenantAdmins <= 1) return false;
+  if (targetUser.role === "tenant_admin" && targetUser.active && activeTenantAdmins <= 1) return false;
   return true;
 }
 
