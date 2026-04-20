@@ -39,6 +39,14 @@ class LocalProvider implements StorageProvider {
   }
 }
 
+if (process.env.NODE_ENV === "production") {
+  console.warn(
+    "[CARENT] Using LocalProvider (base64 data URLs) in production. " +
+    "Images are stored in SQLite and will grow the database. " +
+    "Replace storage in lib/storage.ts with a real provider before uploading photos."
+  );
+}
+
 export const storage: StorageProvider = new LocalProvider();
 
 /** Helper: upload multiple files and return their URLs */

@@ -14,9 +14,9 @@ function normalizeIpAddress(value: string | null): string {
 export async function getAuditRequestContext(): Promise<AuditRequestContext> {
   const requestHeaders = await headers();
   const ipAddress =
-    normalizeIpAddress(requestHeaders.get("x-forwarded-for")) ||
     normalizeIpAddress(requestHeaders.get("x-real-ip")) ||
     normalizeIpAddress(requestHeaders.get("cf-connecting-ip")) ||
+    normalizeIpAddress(requestHeaders.get("x-forwarded-for")) ||
     "";
 
   return {

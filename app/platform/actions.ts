@@ -15,6 +15,7 @@ import {
   updateTenantBillingSettings,
   updateTenantPlan,
 } from "@/lib/auth-db";
+import { PLAN_FEATURE_LIST } from "@/lib/plan-features";
 import { countBillableVehiclesForMonth } from "@/lib/vehicle-db";
 import { createSession, verifySession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
@@ -109,6 +110,8 @@ export async function setTenantFeatureOverrideAction(formData: FormData): Promis
   const tenantId = `${formData.get("tenantId") ?? ""}`;
   const feature = `${formData.get("feature") ?? ""}`;
   const value = `${formData.get("value") ?? ""}`;
+  const validFeatures = new Set(PLAN_FEATURE_LIST.map((f) => f.feature));
+  if (!validFeatures.has(feature as never)) throw new Error(`Unknown feature: ${feature}`);
   const enabled = value === "on" ? true : value === "off" ? false : null;
   setTenantFeatureOverride(tenantId, feature, enabled);
   const requestContext = await getAuditRequestContext();

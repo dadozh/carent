@@ -46,7 +46,7 @@ interface AuditRow {
   created_at: string;
 }
 
-type AuditLogInsert = Omit<AuditLogEntry, "id" | "createdAt">;
+type AuditLogInsert = Omit<AuditLogEntry, "id" | "createdAt" | "category"> & { category?: AuditCategory };
 
 let db: Database.Database | null = null;
 
@@ -80,7 +80,10 @@ function getDb() {
   return db;
 }
 
-function addColumnIfMissing(tableName: string, columnName: string, columnDef: string) {
+const ALLOWED_MIGRATION_TABLES = ["audit_logs"] as const;
+type AllowedTable = (typeof ALLOWED_MIGRATION_TABLES)[number];
+
+function addColumnIfMissing(tableName: AllowedTable, columnName: string, columnDef: string) {
   const cols = db!.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
   if (!cols.some((col) => col.name === columnName)) {
     db!.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
