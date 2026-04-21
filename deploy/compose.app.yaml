@@ -1,0 +1,20 @@
+services:
+  carent-app:
+    image: ghcr.io/dadozh/carent:latest
+    container_name: carent-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:3002:3000"
+    volumes:
+      - carent_uploads:/data/uploads
+    networks:
+      - carent-net
+
+volumes:
+  carent_uploads:
+
+networks:
+  carent-net:
+    external: true
