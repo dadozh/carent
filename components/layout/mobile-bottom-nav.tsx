@@ -20,7 +20,7 @@ export function MobileBottomNav() {
     },
     { href: "/reservations", label: t("nav.reservations"), icon: CalendarDays },
     { href: "/customers", label: t("nav.customers"), icon: Contact },
-    { href: "/settings", label: t("nav.settings"), icon: Settings },
+    { href: "/settings", label: t("nav.settings"), icon: Settings, exact: true },
   ];
 
   return (

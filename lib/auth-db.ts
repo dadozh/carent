@@ -96,6 +96,18 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
+    return true;
+  }
+
+  if (typeof error === "object" && error !== null && "cause" in error) {
+    return isUniqueConstraintError(error.cause);
+  }
+
+  return error instanceof Error && error.message.toLowerCase().includes("unique");
+}
+
 function isValidTenantUserRole(role: UserRole): boolean {
   return TENANT_USER_ROLES.includes(role as (typeof TENANT_USER_ROLES)[number]);
 }
@@ -220,7 +232,7 @@ export async function createUser(tenantId: string, email: string, password: stri
   try {
     await db.insert(users).values({ id, tenantId, email: normalized, passwordHash: bcrypt.hashSync(password, 10), name: name.trim(), role });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("unique")) throw new Error("A user with this email already exists");
+    if (isUniqueConstraintError(error)) throw new Error("A user with this email already exists");
     throw error;
   }
   return (await getUserById(id))!;
@@ -287,7 +299,7 @@ export async function createTenant(name: string, slug: string): Promise<Tenant> 
   try {
     await db.insert(tenants).values({ id, name: name.trim(), slug });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("unique")) throw new Error("A tenant with this slug already exists");
+    if (isUniqueConstraintError(error)) throw new Error("A tenant with this slug already exists");
     throw error;
   }
   return (await getTenantByIdIncludingInactive(id))!;
@@ -305,14 +317,14 @@ export async function createTenantWithAdmin(input: { tenantName: string; slug: s
     try {
       await tx.insert(tenants).values({ id, name: input.tenantName.trim(), slug, plan: input.plan?.trim() || "trial" });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("unique")) throw new Error("A tenant with this slug already exists");
+      if (isUniqueConstraintError(error)) throw new Error("A tenant with this slug already exists");
       throw error;
     }
     const adminId = `u_${randomUUID().replace(/-/g, "")}`;
     try {
       await tx.insert(users).values({ id: adminId, tenantId: id, email: normalized, passwordHash: bcrypt.hashSync(input.adminPassword, 10), name: input.adminName.trim(), role: "tenant_admin" });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("unique")) throw new Error("A user with this email already exists");
+      if (isUniqueConstraintError(error)) throw new Error("A user with this email already exists");
       throw error;
     }
     const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, id)).limit(1);
@@ -405,7 +417,7 @@ export async function createTenantInvoice(input: { tenantId: string; billingMont
   try {
     await db.insert(tenantInvoices).values({ id, tenantId: input.tenantId, billingMonth, periodStart, periodEnd, baseMonthlyPrice: String(base), perVehicleMonthlyPrice: String(perVehicle), vehicleCount: input.vehicleCount, totalAmount: String(total) });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("unique")) throw new Error("An invoice for this tenant and month already exists");
+    if (isUniqueConstraintError(error)) throw new Error("An invoice for this tenant and month already exists");
     throw error;
   }
   const [row] = await db.select().from(tenantInvoices).where(eq(tenantInvoices.id, id)).limit(1);

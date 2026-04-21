@@ -47,6 +47,19 @@ async function cleanupTestTenants() {
   await db.execute(sql`DELETE FROM tenants WHERE id IN (${T1}, ${T2})`);
 }
 
+async function ensureTestTenants() {
+  if (!hasDb) return;
+  const { db } = await getDb();
+  const { sql } = await import("drizzle-orm");
+  await db.execute(sql`
+    INSERT INTO tenants (id, name, slug, plan, active)
+    VALUES
+      (${T1}, 'Test Tenant A', 'test-tenant-a', 'trial', true),
+      (${T2}, 'Test Tenant B', 'test-tenant-b', 'trial', true)
+    ON CONFLICT (id) DO NOTHING
+  `);
+}
+
 function customerInput(overrides: Record<string, string> = {}) {
   return {
     firstName: "Ana",
@@ -103,7 +116,10 @@ function reservationInput(customerId: string, vehicleId: string) {
 }
 
 describeIfDb("rental-db — customers", () => {
-  beforeEach(cleanupTestTenants);
+  beforeEach(async () => {
+    await cleanupTestTenants();
+    await ensureTestTenants();
+  });
   afterEach(cleanupTestTenants);
 
   it("creates a customer scoped to tenant", async () => {
@@ -140,7 +156,10 @@ describeIfDb("rental-db — customers", () => {
 });
 
 describeIfDb("rental-db — reservations", () => {
-  beforeEach(cleanupTestTenants);
+  beforeEach(async () => {
+    await cleanupTestTenants();
+    await ensureTestTenants();
+  });
   afterEach(cleanupTestTenants);
 
   async function seedForTenant(tenantId: string, plate = "NS-100") {
@@ -285,7 +304,10 @@ describeIfDb("rental-db — reservations", () => {
 });
 
 describeIfDb("rental-db — vehicle swap enhancements", () => {
-  beforeEach(cleanupTestTenants);
+  beforeEach(async () => {
+    await cleanupTestTenants();
+    await ensureTestTenants();
+  });
   afterEach(cleanupTestTenants);
 
   async function seedActiveReservation(tenantId: string, plate = "SWAP-001") {
@@ -391,7 +413,10 @@ describeIfDb("rental-db — vehicle swap enhancements", () => {
 });
 
 describeIfDb("rental-db — rental extension", () => {
-  beforeEach(cleanupTestTenants);
+  beforeEach(async () => {
+    await cleanupTestTenants();
+    await ensureTestTenants();
+  });
   afterEach(cleanupTestTenants);
 
   async function seedActive(tenantId: string, plate: string) {
@@ -461,7 +486,10 @@ describeIfDb("rental-db — rental extension", () => {
 });
 
 describeIfDb("rental-db — return checklist", () => {
-  beforeEach(cleanupTestTenants);
+  beforeEach(async () => {
+    await cleanupTestTenants();
+    await ensureTestTenants();
+  });
   afterEach(cleanupTestTenants);
 
   async function seedActive(tenantId: string, plate: string) {
@@ -574,7 +602,10 @@ describeIfDb("rental-db — return checklist", () => {
 });
 
 describeIfDb("rental-db — payment tracking", () => {
-  beforeEach(cleanupTestTenants);
+  beforeEach(async () => {
+    await cleanupTestTenants();
+    await ensureTestTenants();
+  });
   afterEach(cleanupTestTenants);
 
   async function seedReservation(tenantId: string, plate: string, status: "confirmed" | "active" | "completed" = "active") {

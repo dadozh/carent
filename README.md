@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-
 ## Getting Started
 
-First, run the development server:
+Run the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Set `DATABASE_URL` before generating and applying Drizzle migrations:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npx drizzle-kit generate
+npx drizzle-kit migrate
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Set `CARENT_UPLOAD_DIR` anywhere the app should persist uploaded files. Uploaded assets are stored on disk and served through `/api/uploads/...`.
 
-## Learn More
+## Docker
 
-To learn more about Next.js, take a look at the following resources:
+Use a named volume for uploads. That is the better default here because it persists across container replacement without coupling the deployment to a specific host path.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+docker build -t carent .
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+docker run \
+  -e DATABASE_URL=postgres://user:pass@db:5432/carent \
+  -e CARENT_UPLOAD_DIR=/data/uploads \
+  -v carent_uploads:/data/uploads \
+  -p 3000:3000 \
+  carent
+```
 
-## Deploy on Vercel
+Uploads are tenant-scoped under `tenants/<tenantId>/...`. The upload API accepts only the application scopes `vehicles`, `customers`, and `reservations`, and enforces the corresponding tenant permissions server-side.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Server Postgres
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Current server setup keeps CARENT separate from Paperclip:
+
+- Paperclip embedded Postgres remains on `127.0.0.1:54329`.
+- CARENT uses a dedicated Dockerized Postgres service named `carent-postgres`.
+- The service is attached to Docker network `carent-net`.
+- Server-side compose files live under `/home/dado/carent-deploy/`.
+
+Use one of these `DATABASE_URL` forms:
+
+- From the CARENT app container on `carent-net`:
+  `postgres://carrent:<password>@carent-postgres:5432/carrent`
+- From the host for migrations/admin work:
+  `postgres://carrent:<password>@127.0.0.1:55432/carrent`
+
+The actual password is stored only on the server in `/home/dado/carent-deploy/.env.postgres`.
+
+## Notes
+
+- The app seeds the default tenant and initial admin users once on server startup.
+- Next.js 16 currently warns that `middleware.ts` should be renamed to `proxy.ts`.

@@ -13,7 +13,7 @@ import {
   tenantReservationCounters,
   vehicleSwaps,
 } from "@/lib/db/schema";
-import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType } from "@/lib/mock-data";
+import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType, Vehicle } from "@/lib/mock-data";
 import { getTenantSettings } from "@/lib/auth-db";
 import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
@@ -225,7 +225,7 @@ async function validateVehicleReservationConflict(
       RESERVATION_BLOCKING_STATUSES.includes(r.status) &&
       reservationBlocksPeriod(r, periodStart, periodEnd)
   );
-  if (conflict) throw new Error(`Vehicle is already reserved for the selected period (reservation #${conflict.id})`);
+  if (conflict) throw new Error(`Vehicle is already reserved during the extended period (reservation #${conflict.id})`);
 }
 
 function calculateTotalCost(startDate: string, endDate: string, dailyRate: number): number {
@@ -233,6 +233,10 @@ function calculateTotalCost(startDate: string, endDate: string, dailyRate: numbe
   const end = new Date(endDate).getTime();
   const days = Math.max(1, Math.ceil((end - start) / 86400000));
   return Math.round(days * dailyRate * 100) / 100;
+}
+
+function isVehicleReservable(status: Vehicle["status"]): boolean {
+  return status === "available" || status === "rented";
 }
 
 // ─── Customers ────────────────────────────────────────────────────────────────
@@ -349,7 +353,7 @@ export async function getReservationById(id: string, tenantId: string): Promise<
 export async function createReservation(input: ReservationInput, tenantId: string): Promise<Reservation> {
   const vehicle = await getVehicleById(input.vehicleId, tenantId);
   if (!vehicle) throw new Error("Vehicle not found");
-  if (vehicle.status !== "available") throw new Error("Vehicle is not available");
+  if (!isVehicleReservable(vehicle.status)) throw new Error("Vehicle is not available");
 
   const customer = await getCustomerById(input.customerId, tenantId);
   if (!customer) throw new Error("Customer not found");
@@ -364,7 +368,7 @@ export async function createReservation(input: ReservationInput, tenantId: strin
   const totalCost = calculateTotalCost(input.startDate, input.endDate, dailyRate);
   await validateVehicleReservationConflict(input.vehicleId, input.startDate, input.endDate, input.pickupTime, input.returnTime, tenantId);
 
-  return db.transaction(async (tx) => {
+  const reservation = await db.transaction(async (tx) => {
     const id = await getNextReservationId(tenantId, tx);
     const createdAt = input.createdAt ?? new Date().toISOString();
 
@@ -397,12 +401,18 @@ export async function createReservation(input: ReservationInput, tenantId: strin
       .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId))).limit(1);
     return assembleReservation(row, tx);
   });
+
+  if (reservation.status === "active") {
+    await updateVehicle(input.vehicleId, { status: "rented" }, tenantId);
+  }
+
+  return reservation;
 }
 
 export async function createPublicReservation(input: PublicBookingInput, tenantId: string): Promise<Reservation> {
   const vehicle = await getVehicleById(input.vehicleId, tenantId);
   if (!vehicle) throw new Error("Vehicle not found");
-  if (vehicle.status !== "available") throw new Error("Vehicle is not available");
+  if (!isVehicleReservable(vehicle.status)) throw new Error("Vehicle is not available");
 
   const all = await listReservations(tenantId);
   const periodStart = new Date(`${input.startDate}T09:00`).getTime();
@@ -489,6 +499,11 @@ export async function extendReservation(id: string, input: ExtendReservationInpu
   const reservation = await getReservationById(id, tenantId);
   if (!reservation) throw new Error("Reservation not found");
   if (reservation.status !== "active") throw new Error("Only active reservations can be extended");
+  const currentReturnAt = new Date(`${reservation.endDate}T${reservation.returnTime}`).getTime();
+  const nextReturnAt = new Date(`${input.newEndDate}T${input.newReturnTime}`).getTime();
+  if (!Number.isFinite(nextReturnAt) || nextReturnAt <= currentReturnAt) {
+    throw new Error("New return date must be after the current return date");
+  }
 
   await validateVehicleReservationConflict(
     reservation.vehicleId, reservation.startDate, input.newEndDate, reservation.pickupTime, input.newReturnTime, tenantId, id
@@ -523,7 +538,7 @@ export async function swapReservationVehicle(id: string, input: VehicleSwapInput
 
   const toVehicle = await getVehicleById(input.toVehicleId, tenantId);
   if (!toVehicle) throw new Error("Target vehicle not found");
-  if (toVehicle.status !== "available") throw new Error("Target vehicle is not available");
+  if (toVehicle.status !== "available") throw new Error("Replacement vehicle is not available");
 
   await db.transaction(async (tx) => {
     await tx.insert(vehicleSwaps).values({
@@ -540,7 +555,11 @@ export async function swapReservationVehicle(id: string, input: VehicleSwapInput
     }).where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)));
   });
 
-  await updateVehicle(reservation.vehicleId, { status: "available" }, tenantId);
+  const outgoingStatus =
+    input.reasonType === "breakdown" || input.reasonType === "accident"
+      ? "maintenance"
+      : "available";
+  await updateVehicle(reservation.vehicleId, { status: outgoingStatus }, tenantId);
   await updateVehicle(input.toVehicleId, { status: "rented" }, tenantId);
 
   return (await getReservationById(id, tenantId))!;
@@ -573,7 +592,11 @@ export async function completeReservationReturn(id: string, input: ReturnCheckli
     }
   });
 
-  await updateVehicle(reservation.vehicleId, { status: "available", mileage: input.returnMileage }, tenantId);
+  await updateVehicle(
+    reservation.vehicleId,
+    { status: input.hasDamage ? "maintenance" : "available", mileage: input.returnMileage },
+    tenantId
+  );
   if (input.returnMileage) {
     await appendVehicleMaintenanceLog(reservation.vehicleId, {
       date: new Date().toISOString().slice(0, 10),

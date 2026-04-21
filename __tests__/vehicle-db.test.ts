@@ -23,6 +23,20 @@ async function cleanupTestTenants() {
   await db.execute(sql`DELETE FROM vehicle_images WHERE vehicle_id IN (SELECT id FROM vehicles WHERE tenant_id IN (${T1}, ${T2}))`);
   await db.execute(sql`DELETE FROM vehicle_maintenance_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE tenant_id IN (${T1}, ${T2}))`);
   await db.execute(sql`DELETE FROM vehicles WHERE tenant_id IN (${T1}, ${T2})`);
+  await db.execute(sql`DELETE FROM tenants WHERE id IN (${T1}, ${T2})`);
+}
+
+async function ensureTestTenants() {
+  if (!hasDb) return;
+  const { db } = await getDb();
+  const { sql } = await import("drizzle-orm");
+  await db.execute(sql`
+    INSERT INTO tenants (id, name, slug, plan, active)
+    VALUES
+      (${T1}, 'Test Vehicle A', 'test-vehicle-a', 'trial', true),
+      (${T2}, 'Test Vehicle B', 'test-vehicle-b', 'trial', true)
+    ON CONFLICT (id) DO NOTHING
+  `);
 }
 
 function vehicleInput(overrides: Record<string, unknown> = {}) {
@@ -50,7 +64,10 @@ function vehicleInput(overrides: Record<string, unknown> = {}) {
 }
 
 describeIfDb("vehicle-db — tenant isolation", () => {
-  beforeEach(cleanupTestTenants);
+  beforeEach(async () => {
+    await cleanupTestTenants();
+    await ensureTestTenants();
+  });
   afterEach(cleanupTestTenants);
 
   it("creates a vehicle scoped to the given tenant", async () => {
