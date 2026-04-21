@@ -30,6 +30,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/postgres ./node_modules/postgres
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 VOLUME ["/data/uploads"]
