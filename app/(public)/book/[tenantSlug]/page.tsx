@@ -9,13 +9,14 @@ export default async function TenantBookingPage({
   params: Promise<{ tenantSlug: string }>;
 }) {
   const { tenantSlug } = await params;
-  const tenant = getTenantBySlug(tenantSlug);
+  const tenant = await getTenantBySlug(tenantSlug);
 
   if (!tenant) notFound();
-  const overrides = getTenantFeatureOverrides(tenant.id);
+  const [overrides, settings] = await Promise.all([
+    getTenantFeatureOverrides(tenant.id),
+    getTenantSettings(tenant.id),
+  ]);
   if (!canUsePlanFeature(tenant.plan, "publicBooking", overrides)) notFound();
-
-  const settings = getTenantSettings(tenant.id);
 
   return (
     <PublicBookingPage

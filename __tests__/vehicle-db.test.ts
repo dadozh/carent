@@ -1,137 +1,144 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-// Use in-memory DB for every test file
-process.env.CARENT_DB_PATH = ":memory:";
+// Integration tests requiring a real PostgreSQL database.
+// Set DATABASE_URL to run them.
+const hasDb = Boolean(process.env.DATABASE_URL);
+const describeIfDb = hasDb ? describe : describe.skip;
 
-// Dynamic import after env is set
 async function getModule() {
-  const mod = await import("@/lib/vehicle-db");
-  return mod;
+  return import("@/lib/vehicle-db");
 }
 
-describe("vehicle-db — tenant isolation", () => {
-  const T1 = "tenant_a";
-  const T2 = "tenant_b";
+async function getDb() {
+  return import("@/lib/db");
+}
 
+const T1 = "test_vehicle_a";
+const T2 = "test_vehicle_b";
+
+async function cleanupTestTenants() {
+  if (!hasDb) return;
+  const { db } = await getDb();
+  const { sql } = await import("drizzle-orm");
+  await db.execute(sql`DELETE FROM vehicle_images WHERE vehicle_id IN (SELECT id FROM vehicles WHERE tenant_id IN (${T1}, ${T2}))`);
+  await db.execute(sql`DELETE FROM vehicle_maintenance_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE tenant_id IN (${T1}, ${T2}))`);
+  await db.execute(sql`DELETE FROM vehicles WHERE tenant_id IN (${T1}, ${T2})`);
+  await db.execute(sql`DELETE FROM tenants WHERE id IN (${T1}, ${T2})`);
+}
+
+async function ensureTestTenants() {
+  if (!hasDb) return;
+  const { db } = await getDb();
+  const { sql } = await import("drizzle-orm");
+  await db.execute(sql`
+    INSERT INTO tenants (id, name, slug, plan, active)
+    VALUES
+      (${T1}, 'Test Vehicle A', 'test-vehicle-a', 'trial', true),
+      (${T2}, 'Test Vehicle B', 'test-vehicle-b', 'trial', true)
+    ON CONFLICT (id) DO NOTHING
+  `);
+}
+
+function vehicleInput(overrides: Record<string, unknown> = {}) {
+  return {
+    make: "Toyota",
+    model: "Yaris",
+    year: 2022,
+    plate: "NS-001-AA",
+    color: "White",
+    status: "available" as const,
+    category: "compact" as const,
+    transmission: "Manual" as const,
+    fuelType: "Gasoline" as const,
+    seats: 5,
+    luggageCount: 2,
+    dailyRate: 35,
+    mileage: 10000,
+    location: "Airport",
+    lastService: "2025-01-01",
+    nextService: "2026-01-01",
+    image: "",
+    images: [] as string[],
+    ...overrides,
+  };
+}
+
+describeIfDb("vehicle-db — tenant isolation", () => {
   beforeEach(async () => {
-    const { __closeDb } = await getModule();
-    __closeDb();
+    await cleanupTestTenants();
+    await ensureTestTenants();
   });
-
-  afterEach(async () => {
-    const { __closeDb } = await getModule();
-    __closeDb();
-  });
-
-  function vehicleInput(overrides = {}) {
-    return {
-      make: "Toyota",
-      model: "Yaris",
-      year: 2022,
-      plate: "NS-001-AA",
-      color: "White",
-      status: "available" as const,
-      category: "compact" as const,
-      transmission: "Manual" as const,
-      fuelType: "Gasoline" as const,
-      seats: 5,
-      luggageCount: 2,
-      dailyRate: 35,
-      mileage: 10000,
-      location: "Airport",
-      lastService: "2025-01-01",
-      nextService: "2026-01-01",
-      image: "",
-      images: [],
-      ...overrides,
-    };
-  }
+  afterEach(cleanupTestTenants);
 
   it("creates a vehicle scoped to the given tenant", async () => {
     const { createVehicle, listVehicles } = await getModule();
-    createVehicle(vehicleInput(), T1);
-    const t1Vehicles = listVehicles(T1);
+    await createVehicle(vehicleInput(), T1);
+    const t1Vehicles = await listVehicles(T1);
     expect(t1Vehicles).toHaveLength(1);
     expect(t1Vehicles[0].make).toBe("Toyota");
   });
 
   it("tenant A cannot see tenant B vehicles", async () => {
     const { createVehicle, listVehicles } = await getModule();
-    createVehicle(vehicleInput({ plate: "T1-001" }), T1);
-    createVehicle(vehicleInput({ plate: "T2-001" }), T2);
+    await createVehicle(vehicleInput({ plate: "T1-001" }), T1);
+    await createVehicle(vehicleInput({ plate: "T2-001" }), T2);
 
-    expect(listVehicles(T1)).toHaveLength(1);
-    expect(listVehicles(T1)[0].plate).toBe("T1-001");
-
-    expect(listVehicles(T2)).toHaveLength(1);
-    expect(listVehicles(T2)[0].plate).toBe("T2-001");
+    const t1 = await listVehicles(T1);
+    const t2 = await listVehicles(T2);
+    expect(t1).toHaveLength(1);
+    expect(t1[0].plate).toBe("T1-001");
+    expect(t2).toHaveLength(1);
+    expect(t2[0].plate).toBe("T2-001");
   });
 
   it("getVehicleById returns null for wrong tenant", async () => {
     const { createVehicle, getVehicleById } = await getModule();
-    const v = createVehicle(vehicleInput(), T1);
-    expect(getVehicleById(v.id, T1)).not.toBeNull();
-    expect(getVehicleById(v.id, T2)).toBeNull();
+    const v = await createVehicle(vehicleInput(), T1);
+    expect(await getVehicleById(v.id, T1)).not.toBeNull();
+    expect(await getVehicleById(v.id, T2)).toBeNull();
   });
 
   it("updateVehicle cannot update another tenant's vehicle", async () => {
     const { createVehicle, updateVehicle, getVehicleById } = await getModule();
-    const v = createVehicle(vehicleInput({ dailyRate: 35 }), T1);
+    const v = await createVehicle(vehicleInput({ dailyRate: 35 }), T1);
 
-    const result = updateVehicle(v.id, { dailyRate: 99 }, T2);
+    const result = await updateVehicle(v.id, { dailyRate: 99 }, T2);
     expect(result).toBeNull();
 
-    // Original unchanged
-    const original = getVehicleById(v.id, T1);
+    const original = await getVehicleById(v.id, T1);
     expect(original?.dailyRate).toBe(35);
   });
 
   it("updateVehicle works for own tenant", async () => {
     const { createVehicle, updateVehicle, getVehicleById } = await getModule();
-    const v = createVehicle(vehicleInput({ dailyRate: 35 }), T1);
-    updateVehicle(v.id, { dailyRate: 50 }, T1);
-    expect(getVehicleById(v.id, T1)?.dailyRate).toBe(50);
+    const v = await createVehicle(vehicleInput({ dailyRate: 35 }), T1);
+    await updateVehicle(v.id, { dailyRate: 50 }, T1);
+    expect((await getVehicleById(v.id, T1))?.dailyRate).toBe(50);
   });
 
   it("counts billable vehicles for a month using creation and archive dates", async () => {
-    const {
-      __setVehicleLifecycleForTest,
-      countBillableVehiclesForMonth,
-      createVehicle,
-      updateVehicle,
-    } = await getModule();
+    const { countBillableVehiclesForMonth, createVehicle } = await getModule();
+    const { db } = await getDb();
+    const { sql } = await import("drizzle-orm");
 
-    const janOnly = createVehicle(vehicleInput({ plate: "JAN-ONLY" }), T1);
-    __setVehicleLifecycleForTest(janOnly.id, T1, {
-      createdAt: "2026-01-05 10:00:00",
-      archivedAt: "2026-01-20 11:00:00",
-    });
+    const janOnly = await createVehicle(vehicleInput({ plate: "JAN-ONLY" }), T1);
+    await db.execute(sql`UPDATE vehicles SET created_at = '2026-01-05 10:00:00+00', archived_at = '2026-01-20 11:00:00+00' WHERE id = ${janOnly.id}`);
 
-    const fullRange = createVehicle(vehicleInput({ plate: "FULL-RANGE" }), T1);
-    __setVehicleLifecycleForTest(fullRange.id, T1, {
-      createdAt: "2025-12-15 09:00:00",
-    });
+    const fullRange = await createVehicle(vehicleInput({ plate: "FULL-RANGE" }), T1);
+    await db.execute(sql`UPDATE vehicles SET created_at = '2025-12-15 09:00:00+00' WHERE id = ${fullRange.id}`);
 
-    const futureCar = createVehicle(vehicleInput({ plate: "FUTURE-CAR" }), T1);
-    __setVehicleLifecycleForTest(futureCar.id, T1, {
-      createdAt: "2026-02-01 08:00:00",
-    });
+    const futureCar = await createVehicle(vehicleInput({ plate: "FUTURE-CAR" }), T1);
+    await db.execute(sql`UPDATE vehicles SET created_at = '2026-02-01 08:00:00+00' WHERE id = ${futureCar.id}`);
 
-    const otherTenant = createVehicle(vehicleInput({ plate: "OTHER-TENANT" }), T2);
-    __setVehicleLifecycleForTest(otherTenant.id, T2, {
-      createdAt: "2025-12-01 08:00:00",
-    });
+    const otherTenant = await createVehicle(vehicleInput({ plate: "OTHER-TENANT" }), T2);
+    await db.execute(sql`UPDATE vehicles SET created_at = '2025-12-01 08:00:00+00' WHERE id = ${otherTenant.id}`);
 
-    expect(countBillableVehiclesForMonth(T1, "2026-01")).toBe(2);
-    expect(countBillableVehiclesForMonth(T1, "2026-02")).toBe(2);
-    expect(countBillableVehiclesForMonth(T2, "2026-01")).toBe(1);
+    expect(await countBillableVehiclesForMonth(T1, "2026-01")).toBe(2);
+    expect(await countBillableVehiclesForMonth(T1, "2026-02")).toBe(2);
+    expect(await countBillableVehiclesForMonth(T2, "2026-01")).toBe(1);
 
-    updateVehicle(fullRange.id, { status: "retired" }, T1);
-    __setVehicleLifecycleForTest(fullRange.id, T1, {
-      archivedAt: "2026-03-10 12:00:00",
-    });
-
-    expect(countBillableVehiclesForMonth(T1, "2026-03")).toBe(2);
-    expect(countBillableVehiclesForMonth(T1, "2026-04")).toBe(1);
+    await db.execute(sql`UPDATE vehicles SET archived_at = '2026-03-10 12:00:00+00' WHERE id = ${fullRange.id}`);
+    expect(await countBillableVehiclesForMonth(T1, "2026-03")).toBe(2);
+    expect(await countBillableVehiclesForMonth(T1, "2026-04")).toBe(1);
   });
 });

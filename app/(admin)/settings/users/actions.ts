@@ -51,29 +51,29 @@ function generateTemporaryPassword() {
   return `Tmp-${randomUUID().replace(/-/g, "").slice(0, 10)}!`;
 }
 
-function ensureUserCanBeModified(
+async function ensureUserCanBeModified(
   tenantId: string,
   targetUserId: string,
   actingUserId: string
 ) {
-  const user = getUserByIdForTenant(targetUserId, tenantId, { includeInactive: true });
+  const user = await getUserByIdForTenant(targetUserId, tenantId, { includeInactive: true });
   if (!user) throw new Error("settings.users.error.notFound");
   if (user.role === "super_admin") throw new Error("settings.users.error.notFound");
   if (user.id === actingUserId) throw new Error("settings.users.error.selfChange");
   return user;
 }
 
-function assertTenantAdminSafety(
+async function assertTenantAdminSafety(
   tenantId: string,
-  user: { role: UserRole; active: number },
+  user: { role: UserRole; active: boolean },
   next: { role?: UserRole; active?: boolean }
 ) {
   const nextRole = next.role ?? user.role;
-  const nextActive = next.active ?? Boolean(user.active);
+  const nextActive = next.active ?? user.active;
   const wouldRemainTenantAdmin = nextRole === "tenant_admin" && nextActive;
 
-  if (user.role === "tenant_admin" && user.active === 1 && !wouldRemainTenantAdmin) {
-    const activeAdmins = countActiveUsersByRole(tenantId, "tenant_admin");
+  if (user.role === "tenant_admin" && user.active && !wouldRemainTenantAdmin) {
+    const activeAdmins = await countActiveUsersByRole(tenantId, "tenant_admin");
     if (activeAdmins <= 1) {
       throw new Error("settings.users.error.lastAdmin");
     }
@@ -91,9 +91,9 @@ export async function inviteUserAction(
   try {
     const role = parseRole(formData.get("role"));
     const tempPassword = generateTemporaryPassword();
-    const user = createUser(session.tenantId, email, tempPassword, name, role);
+    const user = await createUser(session.tenantId, email, tempPassword, name, role);
     const requestContext = await getAuditRequestContext();
-    logAction({
+    void logAction({
       tenantId: session.tenantId,
       userId: session.userId,
       userName: session.name,
@@ -132,14 +132,14 @@ export async function toggleUserActiveAction(formData: FormData): Promise<void> 
   const session = await ensureTenantAdminSession();
   const targetUserId = `${formData.get("userId") ?? ""}`;
   const nextActive = `${formData.get("nextActive") ?? ""}` === "true";
-  const user = ensureUserCanBeModified(session.tenantId, targetUserId, session.userId);
+  const user = await ensureUserCanBeModified(session.tenantId, targetUserId, session.userId);
 
-  assertTenantAdminSafety(session.tenantId, user, { active: nextActive });
+  await assertTenantAdminSafety(session.tenantId, user, { active: nextActive });
 
-  const updatedUser = setUserActive(targetUserId, session.tenantId, nextActive);
+  const updatedUser = await setUserActive(targetUserId, session.tenantId, nextActive);
   if (!updatedUser) throw new Error("settings.users.error.notFound");
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId: session.tenantId,
     userId: session.userId,
     userName: session.name,
@@ -166,14 +166,14 @@ export async function changeUserRoleAction(formData: FormData): Promise<void> {
   const session = await ensureTenantAdminSession();
   const targetUserId = `${formData.get("userId") ?? ""}`;
   const nextRole = parseRole(formData.get("role"));
-  const user = ensureUserCanBeModified(session.tenantId, targetUserId, session.userId);
+  const user = await ensureUserCanBeModified(session.tenantId, targetUserId, session.userId);
 
-  assertTenantAdminSafety(session.tenantId, user, { role: nextRole });
+  await assertTenantAdminSafety(session.tenantId, user, { role: nextRole });
 
-  const updatedUser = updateUserRole(targetUserId, session.tenantId, nextRole);
+  const updatedUser = await updateUserRole(targetUserId, session.tenantId, nextRole);
   if (!updatedUser) throw new Error("settings.users.error.notFound");
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId: session.tenantId,
     userId: session.userId,
     userName: session.name,

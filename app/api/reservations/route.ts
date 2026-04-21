@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     assertCan(role, "read");
     const { searchParams } = new URL(request.url);
     const limit = Number(searchParams.get("limit") ?? "");
-    const result = listReservationsWithTotal(tenantId, {
+    const result = await listReservationsWithTotal(tenantId, {
       search: searchParams.get("search") ?? undefined,
       status: searchParams.get("status") ?? undefined,
       dateFrom: searchParams.get("dateFrom") ?? undefined,
@@ -52,8 +52,8 @@ export async function POST(request: Request) {
     const { tenantId, userId, userName, role, requestContext } = await getApiSession();
     assertCan(role, "writeReservation");
     const data = await request.json();
-    const reservation = createReservation(data, tenantId);
-    logAction({
+    const reservation = await createReservation(data, tenantId);
+    void logAction({
       tenantId,
       userId,
       userName,

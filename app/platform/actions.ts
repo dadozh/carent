@@ -61,7 +61,7 @@ export async function createTenantAction(
   const tempPassword = generateTemporaryPassword();
 
   try {
-    const { tenant } = createTenantWithAdmin({
+    const { tenant } = await createTenantWithAdmin({
       tenantName,
       slug,
       adminName,
@@ -70,7 +70,7 @@ export async function createTenantAction(
       plan,
     });
     const requestContext = await getAuditRequestContext();
-    logAction({
+    void logAction({
       tenantId: tenant.id,
       userId: session.userId,
       userName: session.name,
@@ -113,9 +113,9 @@ export async function setTenantFeatureOverrideAction(formData: FormData): Promis
   const validFeatures = new Set(PLAN_FEATURE_LIST.map((f) => f.feature));
   if (!validFeatures.has(feature as never)) throw new Error(`Unknown feature: ${feature}`);
   const enabled = value === "on" ? true : value === "off" ? false : null;
-  setTenantFeatureOverride(tenantId, feature, enabled);
+  await setTenantFeatureOverride(tenantId, feature, enabled);
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId,
     userId: session.userId,
     userName: session.name,
@@ -141,10 +141,10 @@ export async function changeTenantPlanAction(formData: FormData): Promise<void> 
   const session = await requireSuperAdmin();
   const tenantId = `${formData.get("tenantId") ?? ""}`;
   const plan = `${formData.get("plan") ?? ""}`.trim();
-  updateTenantPlan(tenantId, plan);
-  const tenant = getTenantByIdIncludingInactive(tenantId);
+  await updateTenantPlan(tenantId, plan);
+  const tenant = await getTenantByIdIncludingInactive(tenantId);
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId,
     userId: session.userId,
     userName: session.name,
@@ -172,11 +172,11 @@ export async function toggleTenantActiveAction(formData: FormData): Promise<void
       ? "Stop impersonating this tenant before disabling it"
       : "You cannot disable your own home tenant");
   }
-  const tenant = setTenantActive(tenantId, nextActive);
+  const tenant = await setTenantActive(tenantId, nextActive);
 
   if (!tenant) throw new Error("Tenant not found");
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId,
     userId: session.userId,
     userName: session.name,
@@ -199,11 +199,11 @@ export async function toggleTenantActiveAction(formData: FormData): Promise<void
 export async function impersonateTenantAction(formData: FormData): Promise<void> {
   const session = await requireSuperAdmin();
   const tenantId = `${formData.get("tenantId") ?? ""}`;
-  const tenant = getTenantById(tenantId);
+  const tenant = await getTenantById(tenantId);
 
   if (!tenant) throw new Error("Tenant not found or inactive");
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId: tenant.id,
     userId: session.userId,
     userName: session.name,
@@ -234,13 +234,13 @@ export async function impersonateTenantAction(formData: FormData): Promise<void>
 export async function stopImpersonationAction(): Promise<void> {
   const session = await requireSuperAdmin();
   const homeTenantId = session.homeTenantId ?? session.tenantId;
-  const tenant = getTenantByIdIncludingInactive(homeTenantId);
+  const tenant = await getTenantByIdIncludingInactive(homeTenantId);
 
-  if (!tenant || tenant.active !== 1) {
+  if (!tenant || !tenant.active) {
     throw new Error("Home tenant is unavailable");
   }
   const requestContext = await getAuditRequestContext();
-  logAction({
+  void logAction({
     tenantId: homeTenantId,
     userId: session.userId,
     userName: session.name,
@@ -279,12 +279,12 @@ export async function updateTenantBillingSettingsAction(
   const perVehicleMonthlyPrice = Number(`${formData.get("perVehicleMonthlyPrice") ?? "0"}`);
 
   try {
-    updateTenantBillingSettings(tenantId, {
+    await updateTenantBillingSettings(tenantId, {
       baseMonthlyPrice,
       perVehicleMonthlyPrice,
     });
     const requestContext = await getAuditRequestContext();
-    logAction({
+    void logAction({
       tenantId,
       userId: session.userId,
       userName: session.name,
@@ -327,10 +327,10 @@ export async function generateTenantInvoiceAction(
   const billingMonth = `${formData.get("billingMonth") ?? ""}`.trim();
 
   try {
-    const pricing = getTenantBillingSettings(tenantId);
-    const vehicleCount = countBillableVehiclesForMonth(tenantId, billingMonth);
+    const pricing = await getTenantBillingSettings(tenantId);
+    const vehicleCount = await countBillableVehiclesForMonth(tenantId, billingMonth);
 
-    createTenantInvoice({
+    await createTenantInvoice({
       tenantId,
       billingMonth,
       vehicleCount,
@@ -338,7 +338,7 @@ export async function generateTenantInvoiceAction(
       perVehicleMonthlyPrice: pricing.perVehicleMonthlyPrice,
     });
     const requestContext = await getAuditRequestContext();
-    logAction({
+    void logAction({
       tenantId,
       userId: session.userId,
       userName: session.name,

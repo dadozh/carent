@@ -12,7 +12,7 @@ export async function GET(
   try {
     const [{ id }, { tenantId, role }] = await Promise.all([params, getApiSession()]);
     assertCan(role, "read");
-    const customer = getCustomerById(id, tenantId);
+    const customer = await getCustomerById(id, tenantId);
     if (!customer) return Response.json({ error: "Customer not found" }, { status: 404 });
     return Response.json({ customer });
   } catch (error) {
@@ -31,9 +31,9 @@ export async function PATCH(
     const { tenantId, userId, userName, role, requestContext } = session;
     assertCan(role, "writeReservation");
     const data = await request.json();
-    const customer = updateCustomer(id, data, tenantId);
+    const customer = await updateCustomer(id, data, tenantId);
     const flags = [data.blacklisted ? "blacklisted" : null, data.verified === false ? "unverified" : null].filter(Boolean).join(", ");
-    logAction({
+    void logAction({
       tenantId,
       userId,
       userName,

@@ -38,7 +38,7 @@ export async function changePasswordAction(
     return { error: "Choose a new password different from the current one." };
   }
 
-  const user = getUserById(session.userId);
+  const user = await getUserById(session.userId);
   if (!user) {
     redirect("/login");
   }
@@ -48,9 +48,9 @@ export async function changePasswordAction(
   }
 
   try {
-    updateUserPassword(user.id, newPassword);
+    await updateUserPassword(user.id, newPassword);
     const requestContext = await getAuditRequestContext();
-    logAction({
+    void logAction({
       tenantId: session.tenantId,
       userId: session.userId,
       userName: session.name,

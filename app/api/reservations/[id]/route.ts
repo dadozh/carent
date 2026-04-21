@@ -41,14 +41,14 @@ export async function PATCH(
 
     if (Array.isArray(data.images)) {
       assertCan(role, "writeReservation");
-      reservation = updateReservationImages(id, data.images, tenantId);
+      reservation = await updateReservationImages(id, data.images, tenantId);
       action = "updated_images";
       detail = buildReservationAuditDetail(reservation, {
         metadata: [{ key: "photoCount", value: String(data.images.length) }],
       });
     } else if (data.vehicleSwap) {
       assertCan(role, "swapVehicle");
-      reservation = swapReservationVehicle(id, data.vehicleSwap, tenantId);
+      reservation = await swapReservationVehicle(id, data.vehicleSwap, tenantId);
       action = "swapped_vehicle";
       detail = buildReservationAuditDetail(reservation, {
         metadata: [
@@ -58,7 +58,7 @@ export async function PATCH(
       });
     } else if (data.extension) {
       assertCan(role, "extendReservation");
-      reservation = extendReservation(id, data.extension, tenantId);
+      reservation = await extendReservation(id, data.extension, tenantId);
       action = "extended";
       detail = buildReservationAuditDetail(reservation, {
         metadata: [{ key: "newReturnDate", value: `${data.extension.newEndDate} ${data.extension.newReturnTime}` }],
@@ -68,7 +68,7 @@ export async function PATCH(
       if (!canUsePlanFeature(plan, "returnPhotos", featureOverrides)) {
         data.returnChecklist.returnPhotos = undefined;
       }
-      reservation = completeReservationReturn(id, data.returnChecklist, tenantId);
+      reservation = await completeReservationReturn(id, data.returnChecklist, tenantId);
       action = "completed_return";
       detail = buildReservationAuditDetail(reservation, {
         metadata: [
@@ -80,7 +80,7 @@ export async function PATCH(
       });
     } else if (data.payment) {
       assertCan(role, "markAsPaid");
-      reservation = markReservationPaid(id, data.payment, tenantId);
+      reservation = await markReservationPaid(id, data.payment, tenantId);
       action = "marked_paid";
       detail = buildReservationAuditDetail(reservation, {
         metadata: [
@@ -90,12 +90,12 @@ export async function PATCH(
       });
     } else if (data.status === "active") {
       assertCan(role, "startRental");
-      reservation = updateReservationStatus(id, data, tenantId);
+      reservation = await updateReservationStatus(id, data, tenantId);
       action = "started_rental";
       detail = buildReservationAuditDetail(reservation);
     } else {
       assertCan(role, "cancelReservation");
-      reservation = updateReservationStatus(id, data, tenantId);
+      reservation = await updateReservationStatus(id, data, tenantId);
       action = `status_changed_to_${data.status}`;
       detail = buildReservationAuditDetail(reservation, {
         metadata: [{ key: "status", value: data.status }],
@@ -103,7 +103,7 @@ export async function PATCH(
       });
     }
 
-    logAction({
+    void logAction({
       tenantId,
       userId,
       userName,

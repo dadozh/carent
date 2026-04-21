@@ -27,8 +27,13 @@ export function Sidebar() {
     },
     { href: "/reservations", label: t("nav.reservations"), icon: CalendarDays },
     { href: "/customers", label: t("nav.customers"), icon: Contact },
-    ...(canManageUsers ? [{ href: "/settings/users", label: t("nav.users"), icon: Users }] : []),
-    ...(canManageSettings ? [{ href: "/settings", label: t("nav.settings"), icon: Settings }] : []),
+    ...(canManageUsers ? [{
+      href: "/settings/users",
+      label: t("nav.users"),
+      icon: Users,
+      activeFor: (p: string) => p === "/settings/users" || p.startsWith("/settings/users/"),
+    }] : []),
+    ...(canManageSettings ? [{ href: "/settings", label: t("nav.settings"), icon: Settings, exact: true }] : []),
     ...(canManageSettings && hasAuditLog ? [{ href: "/audit", label: t("nav.auditLog"), icon: ClipboardList }] : []),
   ];
 

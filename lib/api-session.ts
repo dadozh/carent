@@ -28,14 +28,14 @@ export async function getApiSession(): Promise<ApiSession> {
 
   if (!tenantId || !userId || !headerRole) throw new Error("Unauthorized");
 
-  const user = getUserById(userId);
+  const user = await getUserById(userId);
   if (!user) throw new Error("Unauthorized");
   const effectiveTenantId = tenantId;
 
   if (effectiveTenantId !== user.tenant_id && user.role !== "super_admin") {
     throw new Error("Unauthorized");
   }
-  const tenant = getTenantById(effectiveTenantId);
+  const tenant = await getTenantById(effectiveTenantId);
   if (!tenant) throw new Error("Unauthorized");
 
   return {
@@ -44,7 +44,7 @@ export async function getApiSession(): Promise<ApiSession> {
     userName: user.name,
     role: user.role,
     plan: tenant.plan,
-    featureOverrides: getTenantFeatureOverrides(effectiveTenantId) as FeatureOverrides,
+    featureOverrides: await getTenantFeatureOverrides(effectiveTenantId) as FeatureOverrides,
     requestContext,
   };
 }

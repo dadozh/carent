@@ -23,7 +23,7 @@ export default async function TenantAuditPage({
   const stream = resolvedSearchParams?.stream === "admin" ? "admin" : "operations";
   const cookieStore = await cookies();
   const locale: Locale = cookieStore.get(LOCALE_COOKIE_KEY)?.value === "sr" ? "sr" : "en";
-  const tenant = getTenantByIdIncludingInactive(tenantId);
+  const tenant = await getTenantByIdIncludingInactive(tenantId);
   if (!tenant) notFound();
 
   return (

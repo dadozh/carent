@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const tenantId = searchParams.get("tenantId") ?? "";
-    if (!tenantId || !getTenantByIdIncludingInactive(tenantId)) {
+    if (!tenantId || !await getTenantByIdIncludingInactive(tenantId)) {
       return Response.json({ error: "Tenant not found" }, { status: 404 });
     }
 
@@ -34,10 +34,15 @@ export async function GET(request: Request) {
       dateTo,
     };
 
+    const [logs, actors, total] = await Promise.all([
+      listAuditLogs(tenantId, { ...options, limit: normalizedPageSize, offset }),
+      listAuditActors(tenantId),
+      countAuditLogsFiltered(tenantId, options),
+    ]);
     return Response.json({
-      logs: listAuditLogs(tenantId, { ...options, limit: normalizedPageSize, offset }),
-      actors: listAuditActors(tenantId),
-      total: countAuditLogsFiltered(tenantId, options),
+      logs,
+      actors,
+      total,
       page: normalizedPage,
       pageSize: normalizedPageSize,
     });

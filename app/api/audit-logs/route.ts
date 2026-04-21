@@ -28,13 +28,11 @@ export async function GET(request: Request) {
       dateFrom,
       dateTo,
     };
-    const logs = listAuditLogs(tenantId, {
-      ...options,
-      limit: normalizedPageSize,
-      offset,
-    });
-    const total = countAuditLogsFiltered(tenantId, options);
-    const actors = listAuditActors(tenantId);
+    const [logs, total, actors] = await Promise.all([
+      listAuditLogs(tenantId, { ...options, limit: normalizedPageSize, offset }),
+      countAuditLogsFiltered(tenantId, options),
+      listAuditActors(tenantId),
+    ]);
     return Response.json({
       logs,
       actors,

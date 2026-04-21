@@ -79,7 +79,7 @@ export async function GET(
   try {
     const [{ id }, { tenantId, role }] = await Promise.all([params, getApiSession()]);
     assertCan(role, "read");
-    const vehicle = getVehicleById(id, tenantId);
+    const vehicle = await getVehicleById(id, tenantId);
     if (!vehicle) return Response.json({ error: "Vehicle not found" }, { status: 404 });
     return Response.json({ vehicle });
   } catch (error) {
@@ -98,11 +98,11 @@ export async function PATCH(
     const { tenantId, userId, userName, role, requestContext } = session;
     assertCan(role, "manageFleet");
     const data = await request.json();
-    const existing = getVehicleById(id, tenantId);
+    const existing = await getVehicleById(id, tenantId);
     if (!existing) return Response.json({ error: "Vehicle not found" }, { status: 404 });
-    const vehicle = updateVehicle(id, data, tenantId);
+    const vehicle = await updateVehicle(id, data, tenantId);
     if (!vehicle) return Response.json({ error: "Vehicle not found" }, { status: 404 });
-    logAction({
+    void logAction({
       tenantId,
       userId,
       userName,

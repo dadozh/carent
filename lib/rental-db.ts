@@ -1,16 +1,26 @@
-import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
-import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType } from "@/lib/mock-data";
-import { formatDateTime } from "@/lib/date-format";
+import { and, count as sqlCount, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import {
+  customerImages,
+  customers,
+  reservationExtensions,
+  reservationExtras,
+  reservationImages,
+  reservationPayments,
+  reservations,
+  returnChecklists,
+  tenantReservationCounters,
+  vehicleSwaps,
+} from "@/lib/db/schema";
+import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType, Vehicle } from "@/lib/mock-data";
+import { getTenantSettings } from "@/lib/auth-db";
+import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
 import { getReservationOutstandingAmount } from "@/lib/reservation-payments";
-import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
-import { getTenantSettings } from "@/lib/auth-db";
+import type { Transaction } from "@/lib/db";
 
-const DATA_DIR = path.join(process.cwd(), ".data");
-const DB_PATH = process.env.CARENT_DB_PATH ?? path.join(DATA_DIR, "carent.sqlite");
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type CustomerInput = Omit<Customer, "id" | "verified" | "totalRentals" | "totalSpent" | "images"> & {
   verified?: boolean;
@@ -28,207 +38,41 @@ type ReservationInput = Omit<
 };
 
 export interface PublicBookingCustomerInput {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  licenseNumber: string;
-  licenseExpiry: string;
-  address: string;
+  firstName: string; lastName: string; email: string; phone: string;
+  licenseNumber: string; licenseExpiry: string; address: string;
 }
 
 export interface PublicBookingInput {
-  vehicleId: string;
-  startDate: string;
-  endDate: string;
-  pickupLocation: string;
-  returnLocation: string;
-  extras: string[];
+  vehicleId: string; startDate: string; endDate: string;
+  pickupLocation: string; returnLocation: string; extras: string[];
   customer: PublicBookingCustomerInput;
 }
 
-type ReservationStatusUpdate = {
-  status: Reservation["status"];
-  cancellationReason?: string;
-  adjustedCost?: number;
-};
+type ReservationStatusUpdate = { status: Reservation["status"]; cancellationReason?: string; adjustedCost?: number };
 
 export type VehicleSwapInput = {
-  toVehicleId: string;
-  toVehicleName: string;
-  toVehiclePlate: string;
-  reason: string;
-  reasonType: SwapReasonType;
-  fromVehicleCondition?: string;
+  toVehicleId: string; toVehicleName: string; toVehiclePlate: string;
+  reason: string; reasonType: SwapReasonType; fromVehicleCondition?: string;
 };
 
-export type ExtendReservationInput = {
-  newEndDate: string;
-  newReturnTime: string;
-};
+export type ExtendReservationInput = { newEndDate: string; newReturnTime: string };
 
 export type ReturnChecklistInput = {
-  returnMileage: number;
-  fuelLevel: FuelLevel;
-  hasDamage: boolean;
-  damageDescription?: string;
-  extraCharges?: number;
-  notes?: string;
-  returnPhotos?: string[];
+  returnMileage: number; fuelLevel: FuelLevel; hasDamage: boolean;
+  damageDescription?: string; extraCharges?: number; notes?: string; returnPhotos?: string[];
 };
 
-export type MarkReservationPaidInput = {
-  method: "cash";
-};
+export type MarkReservationPaidInput = { method: "cash" };
 
 export interface ReservationListFilters {
-  search?: string;
-  status?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  overdue?: boolean;
-  limit?: number;
+  search?: string; status?: string; dateFrom?: string; dateTo?: string;
+  overdue?: boolean; limit?: number;
 }
 
-interface JsonRow {
-  data: string;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-interface IdRow {
-  id: string;
-}
-
-let db: Database.Database | null = null;
-
-function getDb() {
-  if (db) return db;
-
-  if (!DB_PATH.startsWith(":")) mkdirSync(DATA_DIR, { recursive: true });
-  db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS customers (
-      id TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS reservations (
-      id TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  addColumnIfMissing("customers", "tenant_id", "TEXT NOT NULL DEFAULT 't_default'");
-
-  // Migrate reservations to composite (tenant_id, id) primary key so each tenant
-  // can have its own sequential counter without global ID collisions.
-  migrateReservationsToCompositePk();
-
-  return db;
-}
-
-function migrateReservationsToCompositePk() {
-  const info = db!
-    .prepare("PRAGMA table_info(reservations)")
-    .all() as Array<{ name: string; pk: number }>;
-
-  const idPk = info.find((c) => c.name === "id")?.pk ?? 0;
-  const tenantPk = info.find((c) => c.name === "tenant_id")?.pk ?? 0;
-
-  // Already on composite PK schema — nothing to do.
-  if (tenantPk > 0) return;
-
-  // Old schema: id is the sole primary key. Recreate with composite PK.
-  // tenant_id may or may not already exist as a plain column.
-  const hasTenantCol = info.some((c) => c.name === "tenant_id");
-  const selectTenant = hasTenantCol ? "COALESCE(tenant_id, 't_default')" : "'t_default'";
-
-  db!.exec(`
-    CREATE TABLE reservations_new (
-      id         TEXT NOT NULL,
-      tenant_id  TEXT NOT NULL DEFAULT 't_default',
-      data       TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (tenant_id, id)
-    );
-    INSERT INTO reservations_new (id, tenant_id, data, created_at, updated_at)
-      SELECT id, ${selectTenant}, data, created_at, updated_at FROM reservations;
-    DROP TABLE reservations;
-    ALTER TABLE reservations_new RENAME TO reservations;
-  `);
-
-  // Suppress unused variable warning for idPk
-  void idPk;
-}
-
-function addColumnIfMissing(tableName: string, columnName: string, columnDef: string) {
-  const cols = db!.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-  if (!cols.some((col) => col.name === columnName)) {
-    db!.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
-  }
-}
-
-/** For testing only — closes and resets the DB singleton. */
-export function __closeDb() {
-  db?.close();
-  db = null;
-}
-
-function parseCustomer(row: JsonRow): Customer {
-  const customer = JSON.parse(row.data) as Customer;
-  return {
-    ...customer,
-    images: normalizeImageList(customer.images),
-  };
-}
-
-function parseReservation(row: JsonRow): Reservation {
-  const reservation = JSON.parse(row.data) as Reservation;
-  const legacyPayment = reservation.payment
-    ? [{
-        paidAt: reservation.payment.paidAt,
-        method: reservation.payment.method,
-        amount: reservation.payment.amountPaid ?? reservation.totalCost,
-      }]
-    : [];
-
-  const payments = (reservation.payments ?? legacyPayment).filter(
-    (payment) => Number.isFinite(payment.amount) && payment.amount > 0
-  );
-  const lastPayment = payments.at(-1);
-  const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
-
-  return {
-    ...reservation,
-    vehiclePlate: reservation.vehiclePlate ?? "",
-    images: normalizeImageList(reservation.images),
-    payments,
-    // Keep legacy field populated so existing readers stay compatible.
-    payment: lastPayment
-      ? { paidAt: lastPayment.paidAt, method: lastPayment.method, amountPaid: totalPaid }
-      : undefined,
-  };
-}
-
-function normalizeImageList(images?: string[]) {
-  return (images ?? []).filter((image) => image.trim());
-}
-
-function getNextReservationId(tenantId: string) {
-  const rows = getDb()
-    .prepare("SELECT id FROM reservations WHERE tenant_id = ?")
-    .all(tenantId) as IdRow[];
-  const currentMax = rows.reduce((max, row) => {
-    if (!/^\d+$/.test(row.id)) return max;
-    return Math.max(max, Number(row.id));
-  }, 0);
-
-  return String(currentMax + 1);
+function toNum(v: string | number | null | undefined): number {
+  return parseFloat(String(v ?? "0")) || 0;
 }
 
 function normalize(value: string) {
@@ -239,6 +83,113 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+// ─── Customer assembly ────────────────────────────────────────────────────────
+
+async function assembleCustomer(row: typeof customers.$inferSelect): Promise<Customer> {
+  const imgs = await db.select().from(customerImages).where(eq(customerImages.customerId, row.id)).orderBy(customerImages.position);
+  return {
+    id: row.id,
+    firstName: row.firstName, lastName: row.lastName,
+    email: row.email, phone: row.phone,
+    licenseNumber: row.licenseNumber, licenseExpiry: row.licenseExpiry,
+    address: row.address, verified: row.verified, blacklisted: row.blacklisted ?? false,
+    internalNotes: row.internalNotes ?? undefined,
+    totalRentals: row.totalRentals, totalSpent: toNum(row.totalSpent),
+    images: imgs.map((i) => i.url),
+  };
+}
+
+// ─── Reservation assembly ─────────────────────────────────────────────────────
+
+async function assembleReservation(
+  row: typeof reservations.$inferSelect,
+  tx: Transaction | typeof db = db
+): Promise<Reservation> {
+  const [extras, extensions, payments, swaps, checklist, images] = await Promise.all([
+    tx.select().from(reservationExtras)
+      .where(and(eq(reservationExtras.tenantId, row.tenantId), eq(reservationExtras.reservationId, row.id)))
+      .orderBy(reservationExtras.position),
+    tx.select().from(reservationExtensions)
+      .where(and(eq(reservationExtensions.tenantId, row.tenantId), eq(reservationExtensions.reservationId, row.id))),
+    tx.select().from(reservationPayments)
+      .where(and(eq(reservationPayments.tenantId, row.tenantId), eq(reservationPayments.reservationId, row.id))),
+    tx.select().from(vehicleSwaps)
+      .where(and(eq(vehicleSwaps.tenantId, row.tenantId), eq(vehicleSwaps.reservationId, row.id))),
+    tx.select().from(returnChecklists)
+      .where(and(eq(returnChecklists.tenantId, row.tenantId), eq(returnChecklists.reservationId, row.id))).limit(1),
+    tx.select().from(reservationImages)
+      .where(and(eq(reservationImages.tenantId, row.tenantId), eq(reservationImages.reservationId, row.id)))
+      .orderBy(reservationImages.position),
+  ]);
+
+  const paymentsList = payments.map((p) => ({
+    paidAt: p.paidAt.toISOString(),
+    method: p.method as "cash",
+    amount: toNum(p.amount),
+  }));
+  const lastPayment = paymentsList.at(-1);
+  const totalPaid = paymentsList.reduce((s, p) => s + p.amount, 0);
+
+  const checklist0 = checklist[0];
+  const returnChecklist = checklist0 ? {
+    returnMileage: checklist0.returnMileage,
+    fuelLevel: checklist0.fuelLevel as FuelLevel,
+    hasDamage: checklist0.hasDamage,
+    damageDescription: checklist0.damageDescription ?? undefined,
+    extraCharges: toNum(checklist0.extraCharges),
+    notes: checklist0.notes ?? undefined,
+    returnPhotos: images.filter((i) => i.source === "return").map((i) => i.url),
+    completedAt: checklist0.completedAt.toISOString(),
+  } : undefined;
+
+  return {
+    id: row.id,
+    customerId: row.customerId, customerName: row.customerName,
+    vehicleId: row.vehicleId, vehicleName: row.vehicleName, vehiclePlate: row.vehiclePlate,
+    startDate: row.startDate, pickupTime: row.pickupTime,
+    endDate: row.endDate, returnTime: row.returnTime,
+    status: row.status as Reservation["status"],
+    dailyRate: toNum(row.dailyRate), totalCost: toNum(row.totalCost),
+    extras: extras.map((e) => e.extra),
+    pickupLocation: row.pickupLocation, returnLocation: row.returnLocation,
+    notes: row.notes, createdAt: row.createdAt,
+    cancellationReason: row.cancellationReason ?? undefined,
+    adjustedCost: row.adjustedCost != null ? toNum(row.adjustedCost) : undefined,
+    vehicleSwaps: swaps.map((s) => ({
+      fromVehicleId: s.fromVehicleId, fromVehicleName: s.fromVehicleName, fromVehiclePlate: s.fromVehiclePlate,
+      toVehicleId: s.toVehicleId, toVehicleName: s.toVehicleName, toVehiclePlate: s.toVehiclePlate,
+      swappedAt: s.swappedAt.toISOString(), reason: s.reason,
+      reasonType: s.reasonType as SwapReasonType, fromVehicleCondition: s.fromVehicleCondition ?? undefined,
+    })),
+    extensions: extensions.map((e) => ({
+      previousEndDate: e.previousEndDate, previousReturnTime: e.previousReturnTime,
+      newEndDate: e.newEndDate, newReturnTime: e.newReturnTime,
+      additionalCost: toNum(e.additionalCost), extendedAt: e.extendedAt.toISOString(),
+    })),
+    returnChecklist,
+    images: images.filter((i) => i.source === "inspection").map((i) => i.url),
+    payments: paymentsList,
+    payment: lastPayment ? { paidAt: lastPayment.paidAt, method: lastPayment.method, amountPaid: totalPaid } : undefined,
+  };
+}
+
+// ─── Sequential reservation ID ────────────────────────────────────────────────
+
+async function getNextReservationId(tenantId: string, tx: Transaction): Promise<string> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`);
+  const result = await tx
+    .insert(tenantReservationCounters)
+    .values({ tenantId, lastIssuedId: 1 })
+    .onConflictDoUpdate({
+      target: tenantReservationCounters.tenantId,
+      set: { lastIssuedId: sql`tenant_reservation_counters.last_issued_id + 1` },
+    })
+    .returning({ id: tenantReservationCounters.lastIssuedId });
+  return String(result[0].id);
+}
+
+// ─── Validation ───────────────────────────────────────────────────────────────
+
 function validateCustomer(input: CustomerInput) {
   if (!input.firstName?.trim()) throw new Error("Customer first name is required");
   if (!input.lastName?.trim()) throw new Error("Customer last name is required");
@@ -248,652 +199,449 @@ function validateCustomer(input: CustomerInput) {
   if (!input.licenseExpiry?.trim()) throw new Error("Customer license expiry is required");
 }
 
-function findDuplicateCustomer(input: CustomerInput, tenantId: string) {
-  const email = normalize(input.email);
-  const licenseNumber = normalize(input.licenseNumber);
+async function validateReservationExtras(extras: string[], tenantId: string) {
+  const settings = await getTenantSettings(tenantId);
+  const invalid = extras.filter((e) => !settings.extras.includes(e));
+  if (invalid.length) throw new Error(`Invalid extras: ${invalid.join(", ")}`);
+}
 
-  return listCustomers(tenantId).find((customer) =>
-    normalize(customer.email) === email || normalize(customer.licenseNumber) === licenseNumber
+async function validateReservationLocations(pickupLocation: string, returnLocation: string, tenantId: string) {
+  const settings = await getTenantSettings(tenantId);
+  if (pickupLocation && !settings.locations.includes(pickupLocation)) throw new Error(`Invalid pickup location: ${pickupLocation}`);
+  if (returnLocation && !settings.locations.includes(returnLocation)) throw new Error(`Invalid return location: ${returnLocation}`);
+}
+
+async function validateVehicleReservationConflict(
+  vehicleId: string, startDate: string, endDate: string, pickupTime: string, returnTime: string,
+  tenantId: string, excludeReservationId?: string
+) {
+  const periodStart = new Date(`${startDate}T${pickupTime}`).getTime();
+  const periodEnd = new Date(`${endDate}T${returnTime}`).getTime();
+  const all = await listReservations(tenantId);
+  const conflict = all.find(
+    (r) =>
+      r.vehicleId === vehicleId &&
+      r.id !== excludeReservationId &&
+      RESERVATION_BLOCKING_STATUSES.includes(r.status) &&
+      reservationBlocksPeriod(r, periodStart, periodEnd)
   );
+  if (conflict) throw new Error(`Vehicle is already reserved during the extended period (reservation #${conflict.id})`);
 }
 
-function createCustomerRecord(input: CustomerInput, tenantId: string): Customer {
-  const customer: Customer = {
-    ...input,
-    id: `c_${randomUUID()}`,
-    verified: input.verified ?? true,
-    totalRentals: 0,
-    totalSpent: 0,
-    images: normalizeImageList(input.images),
-  };
-
-  getDb()
-    .prepare("INSERT INTO customers (id, tenant_id, data) VALUES (?, ?, ?)")
-    .run(customer.id, tenantId, JSON.stringify(customer));
-
-  return customer;
+function calculateTotalCost(startDate: string, endDate: string, dailyRate: number): number {
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  const days = Math.max(1, Math.ceil((end - start) / 86400000));
+  return Math.round(days * dailyRate * 100) / 100;
 }
 
-export function listCustomers(tenantId: string): Customer[] {
-  const rows = getDb()
-    .prepare("SELECT data FROM customers WHERE tenant_id = ? ORDER BY created_at DESC")
-    .all(tenantId) as JsonRow[];
-
-  return rows.map(parseCustomer);
+function isVehicleReservable(status: Vehicle["status"]): boolean {
+  return status === "available" || status === "rented";
 }
 
-export function getCustomerById(id: string, tenantId: string): Customer | null {
-  const row = getDb()
-    .prepare("SELECT data FROM customers WHERE id = ? AND tenant_id = ?")
-    .get(id, tenantId) as JsonRow | undefined;
+// ─── Customers ────────────────────────────────────────────────────────────────
 
-  return row ? parseCustomer(row) : null;
+export async function listCustomers(tenantId: string): Promise<Customer[]> {
+  const rows = await db.select().from(customers).where(eq(customers.tenantId, tenantId)).orderBy(desc(customers.createdAt));
+  return Promise.all(rows.map(assembleCustomer));
 }
 
-export function createCustomer(input: CustomerInput, tenantId: string): Customer {
+export async function getCustomerById(id: string, tenantId: string): Promise<Customer | null> {
+  const [row] = await db.select().from(customers).where(and(eq(customers.id, id), eq(customers.tenantId, tenantId))).limit(1);
+  return row ? assembleCustomer(row) : null;
+}
+
+export async function createCustomer(input: CustomerInput, tenantId: string): Promise<Customer> {
   validateCustomer(input);
 
-  const duplicate = findDuplicateCustomer(input, tenantId);
-  if (duplicate) {
-    throw new Error("A customer with this email or license number already exists");
+  const [dupByEmail] = await db.select({ id: customers.id }).from(customers)
+    .where(and(eq(customers.tenantId, tenantId), sql`LOWER(${customers.email}) = LOWER(${input.email.trim()})`)).limit(1);
+  const [dupByLicense] = await db.select({ id: customers.id }).from(customers)
+    .where(and(eq(customers.tenantId, tenantId), sql`LOWER(${customers.licenseNumber}) = LOWER(${input.licenseNumber.trim()})`)).limit(1);
+  if (dupByEmail || dupByLicense) throw new Error("A customer with this email or license number already exists");
+
+  const id = `c_${randomUUID()}`;
+  await db.insert(customers).values({
+    id, tenantId,
+    firstName: input.firstName.trim(), lastName: input.lastName.trim(),
+    email: normalize(input.email), phone: input.phone.trim(),
+    licenseNumber: input.licenseNumber.trim(), licenseExpiry: input.licenseExpiry.trim(),
+    address: input.address?.trim() ?? "",
+    verified: input.verified ?? true, blacklisted: false,
+  });
+
+  const imgs = (input.images ?? []).filter((u) => u?.trim());
+  if (imgs.length) {
+    await db.insert(customerImages).values(imgs.map((url, position) => ({ id: randomUUID(), customerId: id, url, position })));
   }
 
-  return createCustomerRecord(input, tenantId);
+  return (await getCustomerById(id, tenantId))!;
 }
 
-export function updateCustomerImages(id: string, images: string[], tenantId: string): Customer {
-  const customer = getCustomerById(id, tenantId);
-  if (!customer) throw new Error("Customer not found");
-
-  const updatedCustomer: Customer = {
-    ...customer,
-    images: normalizeImageList(images),
-  };
-
-  getDb()
-    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedCustomer), id, tenantId);
-
-  return updatedCustomer;
+export async function updateCustomer(id: string, input: CustomerUpdateInput, tenantId: string): Promise<Customer> {
+  const existing = await getCustomerById(id, tenantId);
+  if (!existing) throw new Error("Customer not found");
+  await db.update(customers).set({
+    ...(input.firstName !== undefined ? { firstName: input.firstName.trim() } : {}),
+    ...(input.lastName !== undefined ? { lastName: input.lastName.trim() } : {}),
+    ...(input.email !== undefined ? { email: normalize(input.email) } : {}),
+    ...(input.phone !== undefined ? { phone: input.phone.trim() } : {}),
+    ...(input.licenseNumber !== undefined ? { licenseNumber: input.licenseNumber.trim() } : {}),
+    ...(input.licenseExpiry !== undefined ? { licenseExpiry: input.licenseExpiry.trim() } : {}),
+    ...(input.address !== undefined ? { address: input.address.trim() } : {}),
+    ...(input.verified !== undefined ? { verified: input.verified } : {}),
+    ...(input.blacklisted !== undefined ? { blacklisted: input.blacklisted } : {}),
+    ...(input.internalNotes !== undefined ? { internalNotes: input.internalNotes } : {}),
+    updatedAt: new Date(),
+  }).where(and(eq(customers.id, id), eq(customers.tenantId, tenantId)));
+  return (await getCustomerById(id, tenantId))!;
 }
 
-export function updateCustomer(id: string, input: CustomerUpdateInput, tenantId: string): Customer {
-  const customer = getCustomerById(id, tenantId);
-  if (!customer) throw new Error("Customer not found");
+export async function updateCustomerImages(id: string, images: string[], tenantId: string): Promise<Customer> {
+  const existing = await getCustomerById(id, tenantId);
+  if (!existing) throw new Error("Customer not found");
+  await db.delete(customerImages).where(eq(customerImages.customerId, id));
+  const imgs = images.filter((u) => u?.trim());
+  if (imgs.length) {
+    await db.insert(customerImages).values(imgs.map((url, position) => ({ id: randomUUID(), customerId: id, url, position })));
+  }
+  return (await getCustomerById(id, tenantId))!;
+}
 
-  // Validate any required fields being changed
-  const merged = { ...customer, ...input };
-  if (!merged.firstName?.trim()) throw new Error("Customer first name is required");
-  if (!merged.lastName?.trim()) throw new Error("Customer last name is required");
-  if (!merged.email?.trim() || !isValidEmail(merged.email)) throw new Error("Valid customer email is required");
-  if (!merged.phone?.trim() || merged.phone.trim().length < 6) throw new Error("Valid customer phone is required");
-  if (!merged.licenseNumber?.trim()) throw new Error("Customer license number is required");
-  if (!merged.licenseExpiry?.trim()) throw new Error("Customer license expiry is required");
+// ─── Reservations ─────────────────────────────────────────────────────────────
 
-  // Check for duplicates on email/license change, excluding the current customer
-  const emailChanged = input.email && normalize(input.email) !== normalize(customer.email);
-  const licenseChanged = input.licenseNumber && normalize(input.licenseNumber) !== normalize(customer.licenseNumber);
-  if (emailChanged || licenseChanged) {
-    const newEmail = normalize(merged.email);
-    const newLicense = normalize(merged.licenseNumber);
-    const duplicate = listCustomers(tenantId).find(
-      (c) => c.id !== id && (normalize(c.email) === newEmail || normalize(c.licenseNumber) === newLicense)
+export async function listReservations(tenantId: string, filters?: ReservationListFilters): Promise<Reservation[]> {
+  const rows = await db.select().from(reservations)
+    .where(eq(reservations.tenantId, tenantId))
+    .orderBy(desc(reservations.createdAt));
+  let all = await Promise.all(rows.map((r) => assembleReservation(r)));
+
+  if (!filters) return all;
+
+  if (filters.status) all = all.filter((r) => r.status === filters.status);
+  if (filters.dateFrom) all = all.filter((r) => r.startDate >= filters.dateFrom!);
+  if (filters.dateTo) all = all.filter((r) => r.endDate <= filters.dateTo!);
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    all = all.filter((r) =>
+      r.customerName.toLowerCase().includes(q) ||
+      r.vehicleName.toLowerCase().includes(q) ||
+      r.vehiclePlate.toLowerCase().includes(q) ||
+      r.id.includes(q)
     );
-    if (duplicate) throw new Error("A customer with this email or license number already exists");
   }
-
-  const updatedCustomer: Customer = {
-    ...customer,
-    ...input,
-    // Keep computed fields unchanged
-    id: customer.id,
-    totalRentals: customer.totalRentals,
-    totalSpent: customer.totalSpent,
-    images: customer.images,
-  };
-
-  getDb()
-    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedCustomer), id, tenantId);
-
-  return updatedCustomer;
-}
-
-function reservationMatchesFilters(reservation: Reservation, filters: ReservationListFilters) {
-  const search = filters.search?.trim().toLowerCase();
-  if (search) {
-    const haystack = `${reservation.customerName} ${reservation.vehicleName} ${reservation.vehiclePlate} ${reservation.id}`.toLowerCase();
-    if (!haystack.includes(search)) return false;
-  }
-
-  if (filters.status && filters.status !== "all") {
-    const statuses = new Set(filters.status.split(",").map((status) => status.trim()).filter(Boolean));
-    if (!statuses.has(reservation.status)) return false;
-  }
-
   if (filters.overdue) {
-    const returnTime = reservation.returnTime ?? "00:00";
-    const returnTs = new Date(`${reservation.endDate}T${returnTime}`).getTime();
-    if (
-      reservation.status !== "active" ||
-      Number.isNaN(returnTs) ||
-      returnTs >= Date.now()
-    ) {
-      return false;
-    }
+    const now = Date.now();
+    all = all.filter((r) => r.status === "active" && new Date(`${r.endDate}T${r.returnTime}`).getTime() < now);
   }
+  if (filters.limit) all = all.slice(0, filters.limit);
 
-  if (filters.dateFrom || filters.dateTo) {
-    const reservationStart = new Date(`${reservation.startDate}T${reservation.pickupTime}`).getTime();
-    const reservationEnd = new Date(`${reservation.endDate}T${reservation.returnTime}`).getTime();
-    const filterStart = filters.dateFrom
-      ? new Date(`${filters.dateFrom}T00:00`).getTime()
-      : Number.NEGATIVE_INFINITY;
-    const filterEnd = filters.dateTo
-      ? new Date(`${filters.dateTo}T23:59`).getTime()
-      : Number.POSITIVE_INFINITY;
-
-    if (
-      Number.isNaN(reservationStart) ||
-      Number.isNaN(reservationEnd) ||
-      Number.isNaN(filterStart) ||
-      Number.isNaN(filterEnd) ||
-      reservationStart > filterEnd ||
-      filterStart > reservationEnd
-    ) {
-      return false;
-    }
-  }
-
-  return true;
+  return all;
 }
 
-export function listReservationsWithTotal(tenantId: string, filters: ReservationListFilters = {}) {
-  const rows = getDb()
-    .prepare("SELECT data FROM reservations WHERE tenant_id = ? ORDER BY created_at DESC")
-    .all(tenantId) as JsonRow[];
+export async function listReservationsWithTotal(tenantId: string, filters?: ReservationListFilters): Promise<{ reservations: Reservation[]; total: number }> {
+  const reservationList = await listReservations(tenantId, filters);
+  return { reservations: reservationList, total: reservationList.length };
+}
 
-  const reservations = rows
-    .map(parseReservation)
-    .filter((reservation) => reservationMatchesFilters(reservation, filters))
-    .sort((a, b) => {
-      const aEnd = `${a.endDate}T${a.returnTime ?? "00:00"}`;
-      const bEnd = `${b.endDate}T${b.returnTime ?? "00:00"}`;
-      return bEnd.localeCompare(aEnd);
+export async function getReservationById(id: string, tenantId: string): Promise<Reservation | null> {
+  const [row] = await db.select().from(reservations)
+    .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId))).limit(1);
+  return row ? assembleReservation(row) : null;
+}
+
+export async function createReservation(input: ReservationInput, tenantId: string): Promise<Reservation> {
+  const vehicle = await getVehicleById(input.vehicleId, tenantId);
+  if (!vehicle) throw new Error("Vehicle not found");
+  if (!isVehicleReservable(vehicle.status)) throw new Error("Vehicle is not available");
+
+  const customer = await getCustomerById(input.customerId, tenantId);
+  if (!customer) throw new Error("Customer not found");
+  if (customer.blacklisted) throw new Error("Customer is blacklisted");
+
+  if (input.extras?.length) await validateReservationExtras(input.extras, tenantId);
+  if (input.pickupLocation || input.returnLocation) {
+    await validateReservationLocations(input.pickupLocation, input.returnLocation, tenantId);
+  }
+
+  const dailyRate = input.dailyRate ?? vehicle.dailyRate;
+  const totalCost = calculateTotalCost(input.startDate, input.endDate, dailyRate);
+  await validateVehicleReservationConflict(input.vehicleId, input.startDate, input.endDate, input.pickupTime, input.returnTime, tenantId);
+
+  const reservation = await db.transaction(async (tx) => {
+    const id = await getNextReservationId(tenantId, tx);
+    const createdAt = input.createdAt ?? new Date().toISOString();
+
+    await tx.insert(reservations).values({
+      id, tenantId,
+      customerId: customer.id, customerName: `${customer.firstName} ${customer.lastName}`,
+      vehicleId: vehicle.id, vehicleName: `${vehicle.make} ${vehicle.model}`, vehiclePlate: vehicle.plate,
+      startDate: input.startDate, pickupTime: input.pickupTime,
+      endDate: input.endDate, returnTime: input.returnTime,
+      status: input.status ?? "confirmed",
+      dailyRate: String(dailyRate), totalCost: String(totalCost),
+      pickupLocation: input.pickupLocation, returnLocation: input.returnLocation,
+      notes: input.notes ?? "", createdAt,
     });
-  const limitedReservations = typeof filters.limit === "number" && filters.limit > 0
-    ? reservations.slice(0, filters.limit)
-    : reservations;
 
-  return {
-    reservations: limitedReservations,
-    total: reservations.length,
-  };
-}
-
-export function listReservations(tenantId: string, filters: ReservationListFilters = {}): Reservation[] {
-  return listReservationsWithTotal(tenantId, filters).reservations;
-}
-
-export function getReservationById(id: string, tenantId: string): Reservation | null {
-  const row = getDb()
-    .prepare("SELECT data FROM reservations WHERE id = ? AND tenant_id = ?")
-    .get(id, tenantId) as JsonRow | undefined;
-
-  return row ? parseReservation(row) : null;
-}
-
-export function updateReservationStatus(id: string, input: ReservationStatusUpdate, tenantId: string): Reservation {
-  const reservation = getReservationById(id, tenantId);
-  if (!reservation) throw new Error("Reservation not found");
-
-  if (!["cancelled", "active"].includes(input.status)) {
-    throw new Error("Unsupported reservation status update");
-  }
-
-  if (input.status === "active") {
-    if (reservation.status === "active") {
-      return reservation;
+    if (input.extras?.length) {
+      await tx.insert(reservationExtras).values(
+        input.extras.map((extra, position) => ({ reservationId: id, tenantId, extra, position }))
+      );
     }
 
-    if (reservation.status !== "confirmed") {
-      throw new Error("Only confirmed reservations can be started");
+    const imgs = (input.images ?? []).filter((u) => u?.trim());
+    if (imgs.length) {
+      await tx.insert(reservationImages).values(
+        imgs.map((url, position) => ({ id: randomUUID(), reservationId: id, tenantId, url, position, source: "inspection" }))
+      );
     }
 
-    const pickupDateTime = new Date(`${reservation.startDate}T${reservation.pickupTime}`);
-    const earliestStart = new Date(pickupDateTime.getTime() - 60 * 60 * 1000); // 1 hour before pickup
-    if (new Date() < earliestStart) {
-      throw new Error("Rental cannot be started more than 1 hour before the scheduled pickup time");
-    }
-
-    const updatedReservation: Reservation = {
-      ...reservation,
-      status: "active",
-    };
-
-    getDb()
-      .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-      .run(JSON.stringify(updatedReservation), id, tenantId);
-
-    updateVehicle(reservation.vehicleId, { status: "rented" }, tenantId);
-
-    return updatedReservation;
-  }
-
-  if (reservation.status === "completed") {
-    throw new Error("Completed reservations cannot be cancelled");
-  }
-
-  if (reservation.status === "cancelled") {
-    return reservation;
-  }
-
-  const updatedReservation: Reservation = {
-    ...reservation,
-    status: input.status,
-    ...(input.cancellationReason !== undefined && { cancellationReason: input.cancellationReason }),
-    ...(input.adjustedCost !== undefined && { adjustedCost: input.adjustedCost }),
-  };
-
-  getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedReservation), id, tenantId);
-
-  // If the reservation was active the vehicle was rented — return it to the right status.
-  // For confirmed reservations the vehicle was never rented, but breakdown/accident still
-  // means it needs to go into maintenance.
-  const isBreakdownOrAccident =
-    input.cancellationReason === "breakdown" || input.cancellationReason === "accident";
+    const [row] = await tx.select().from(reservations)
+      .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId))).limit(1);
+    return assembleReservation(row, tx);
+  });
 
   if (reservation.status === "active") {
-    updateVehicle(
-      reservation.vehicleId,
-      { status: isBreakdownOrAccident ? "maintenance" : "available" },
-      tenantId
-    );
-  } else if (isBreakdownOrAccident) {
-    updateVehicle(reservation.vehicleId, { status: "maintenance" }, tenantId);
+    await updateVehicle(input.vehicleId, { status: "rented" }, tenantId);
   }
-
-  if (isBreakdownOrAccident) {
-    appendVehicleMaintenanceLog(
-      reservation.vehicleId,
-      {
-        type: input.cancellationReason === "breakdown" ? "Breakdown" : "Accident / damage",
-        notes: `Reservation #${reservation.id} cancelled due to ${input.cancellationReason}.`,
-      },
-      tenantId
-    );
-  }
-
-  return updatedReservation;
-}
-
-export function swapReservationVehicle(id: string, input: VehicleSwapInput, tenantId: string): Reservation {
-  const reservation = getReservationById(id, tenantId);
-  if (!reservation) throw new Error("Reservation not found");
-  if (reservation.status !== "active") throw new Error("Vehicle swap is only allowed for active reservations");
-
-  const newVehicle = getVehicleById(input.toVehicleId, tenantId);
-  if (!newVehicle) throw new Error("Replacement vehicle not found");
-  if (newVehicle.status !== "available") throw new Error("Replacement vehicle is not available");
-
-  const swap = {
-    fromVehicleId: reservation.vehicleId,
-    fromVehicleName: reservation.vehicleName,
-    fromVehiclePlate: reservation.vehiclePlate,
-    toVehicleId: input.toVehicleId,
-    toVehicleName: input.toVehicleName,
-    toVehiclePlate: input.toVehiclePlate,
-    swappedAt: new Date().toISOString(),
-    reason: input.reason,
-    reasonType: input.reasonType,
-    fromVehicleCondition: input.fromVehicleCondition,
-  };
-
-  const updatedReservation: Reservation = {
-    ...reservation,
-    vehicleId: input.toVehicleId,
-    vehicleName: input.toVehicleName,
-    vehiclePlate: input.toVehiclePlate,
-    vehicleSwaps: [...(reservation.vehicleSwaps ?? []), swap],
-  };
-
-  getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedReservation), id, tenantId);
-
-  // Update vehicle statuses: outgoing → maintenance (breakdown/accident) or available (other),
-  // incoming → rented.
-  const outgoingStatus = (input.reasonType === "breakdown" || input.reasonType === "accident")
-    ? "maintenance" as const
-    : "available" as const;
-  updateVehicle(reservation.vehicleId, { status: outgoingStatus }, tenantId);
-  updateVehicle(input.toVehicleId, { status: "rented" }, tenantId);
-
-  if (input.reasonType === "breakdown" || input.reasonType === "accident") {
-    appendVehicleMaintenanceLog(
-      reservation.vehicleId,
-      {
-        type: input.reasonType === "breakdown" ? "Breakdown" : "Accident / damage",
-        notes: [
-          `Vehicle swapped during reservation #${reservation.id}.`,
-          input.reason.trim(),
-          input.fromVehicleCondition?.trim(),
-        ].filter(Boolean).join(" "),
-      },
-      tenantId
-    );
-  }
-
-  return updatedReservation;
-}
-
-export function extendReservation(id: string, input: ExtendReservationInput, tenantId: string): Reservation {
-  const reservation = getReservationById(id, tenantId);
-  if (!reservation) throw new Error("Reservation not found");
-  if (reservation.status !== "active") throw new Error("Only active reservations can be extended");
-
-  const currentEnd = new Date(`${reservation.endDate}T${reservation.returnTime}`);
-  const newEnd = new Date(`${input.newEndDate}T${input.newReturnTime}`);
-
-  if (Number.isNaN(currentEnd.getTime()) || Number.isNaN(newEnd.getTime())) {
-    throw new Error("Invalid return date or time");
-  }
-  if (newEnd <= currentEnd) {
-    throw new Error(`New return date must be after the current return date (${formatDateTime(reservation.endDate, reservation.returnTime)})`);
-  }
-
-  // Check for conflicts in the extension window (currentEnd → newEnd + turnaround).
-  const conflict = listReservations(tenantId).find((r) =>
-    r.id !== reservation.id &&
-    r.vehicleId === reservation.vehicleId &&
-    RESERVATION_BLOCKING_STATUSES.includes(r.status) &&
-    reservationBlocksPeriod(r, currentEnd.getTime(), newEnd.getTime() + VEHICLE_TURNAROUND_MS)
-  );
-  if (conflict) throw new Error("Vehicle is already reserved during the extended period");
-
-  const additionalDays = Math.ceil((newEnd.getTime() - currentEnd.getTime()) / (1000 * 60 * 60 * 24));
-  const additionalCost = additionalDays * reservation.dailyRate;
-
-  const extension = {
-    previousEndDate: reservation.endDate,
-    previousReturnTime: reservation.returnTime,
-    newEndDate: input.newEndDate,
-    newReturnTime: input.newReturnTime,
-    additionalCost,
-    extendedAt: new Date().toISOString(),
-  };
-
-  const updatedReservation: Reservation = {
-    ...reservation,
-    endDate: input.newEndDate,
-    returnTime: input.newReturnTime,
-    totalCost: reservation.totalCost + additionalCost,
-    extensions: [...(reservation.extensions ?? []), extension],
-  };
-
-  getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedReservation), id, tenantId);
-
-  return updatedReservation;
-}
-
-export function completeReservationReturn(id: string, input: ReturnChecklistInput, tenantId: string): Reservation {
-  const reservation = getReservationById(id, tenantId);
-  if (!reservation) throw new Error("Reservation not found");
-  if (reservation.status !== "active") throw new Error("Only active reservations can be returned");
-
-  const returnChecklist = {
-    ...input,
-    returnPhotos: input.returnPhotos ?? [],
-    completedAt: new Date().toISOString(),
-  };
-
-  const updatedReservation: Reservation = {
-    ...reservation,
-    status: "completed",
-    returnChecklist,
-  };
-
-  getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedReservation), id, tenantId);
-
-  // Update vehicle: mileage + status (maintenance if damaged, available otherwise).
-  const vehicleStatus = input.hasDamage ? "maintenance" as const : "available" as const;
-  updateVehicle(reservation.vehicleId, { mileage: input.returnMileage, status: vehicleStatus }, tenantId);
-
-  if (input.hasDamage) {
-    appendVehicleMaintenanceLog(
-      reservation.vehicleId,
-      {
-        type: "Damage reported on return",
-        notes: [
-          `Reported during return for reservation #${reservation.id}.`,
-          input.damageDescription?.trim(),
-          input.notes?.trim(),
-        ].filter(Boolean).join(" "),
-      },
-      tenantId
-    );
-  }
-
-  return updatedReservation;
-}
-
-export function markReservationPaid(id: string, input: MarkReservationPaidInput, tenantId: string): Reservation {
-  const reservation = getReservationById(id, tenantId);
-  if (!reservation) throw new Error("Reservation not found");
-  if (reservation.status === "cancelled") throw new Error("Cannot mark a cancelled reservation as paid");
-  const outstandingAmount = getReservationOutstandingAmount(reservation);
-  if (outstandingAmount <= 0) {
-    throw new Error("Reservation is already marked as paid");
-  }
-
-  const newPayment = {
-    paidAt: new Date().toISOString(),
-    method: input.method,
-    amount: outstandingAmount,
-  };
-  const payments = [...(reservation.payments ?? []), newPayment];
-  const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
-  const updatedReservation: Reservation = {
-    ...reservation,
-    payments,
-    // Keep legacy field in sync so existing readers and API consumers don't break.
-    payment: {
-      paidAt: newPayment.paidAt,
-      method: newPayment.method,
-      amountPaid: totalPaid,
-    },
-  };
-
-  getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedReservation), id, tenantId);
-
-  return updatedReservation;
-}
-
-export function updateReservationImages(id: string, images: string[], tenantId: string): Reservation {
-  const reservation = getReservationById(id, tenantId);
-  if (!reservation) throw new Error("Reservation not found");
-
-  const updatedReservation: Reservation = {
-    ...reservation,
-    images: normalizeImageList(images),
-  };
-
-  getDb()
-    .prepare("UPDATE reservations SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedReservation), id, tenantId);
-
-  return updatedReservation;
-}
-
-function getRentalDurationMs(input: ReservationInput) {
-  const pickup = new Date(`${input.startDate}T${input.pickupTime}`);
-  const dropoff = new Date(`${input.endDate}T${input.returnTime}`);
-
-  if (Number.isNaN(pickup.getTime()) || Number.isNaN(dropoff.getTime())) {
-    throw new Error("Invalid reservation pickup or return date/time");
-  }
-
-  return dropoff.getTime() - pickup.getTime();
-}
-
-function getRentalStart(input: ReservationInput) {
-  return new Date(`${input.startDate}T${input.pickupTime}`);
-}
-
-function getRentalEnd(input: ReservationInput) {
-  return new Date(`${input.endDate}T${input.returnTime}`);
-}
-
-function getBillableDays(input: ReservationInput) {
-  return Math.ceil(getRentalDurationMs(input) / (1000 * 60 * 60 * 24));
-}
-
-function validateReservationPeriod(input: ReservationInput) {
-  const durationMs = getRentalDurationMs(input);
-  const pickup = getRentalStart(input);
-
-  if (durationMs <= 0) {
-    throw new Error("Return date and time must be after pickup date and time");
-  }
-
-  if (durationMs < 24 * 60 * 60 * 1000) {
-    throw new Error("Reservation must be at least 24 hours");
-  }
-
-  if (pickup.getTime() < Date.now()) {
-    throw new Error("Pickup date and time cannot be in the past");
-  }
-}
-
-function validateReservationCustomer(input: ReservationInput, tenantId: string) {
-  const customer = getCustomerById(input.customerId, tenantId);
-  if (!customer) throw new Error("Customer not found");
-  validateCustomer(customer);
-
-  const licenseExpiry = new Date(`${customer.licenseExpiry}T23:59`);
-  if (Number.isNaN(licenseExpiry.getTime()) || licenseExpiry < getRentalEnd(input)) {
-    throw new Error("Customer license must be valid through the return date");
-  }
-
-  return customer;
-}
-
-function validateReservationVehicle(input: ReservationInput, tenantId: string) {
-  const vehicle = getVehicleById(input.vehicleId, tenantId);
-  if (!vehicle) throw new Error("Vehicle not found");
-  if (vehicle.status !== "available") throw new Error("Vehicle is not available for booking");
-  return vehicle;
-}
-
-function validateReservationExtras(input: ReservationInput, tenantId: string) {
-  const allowedExtras = new Set(getTenantSettings(tenantId).extras);
-  const invalidExtra = input.extras.find((extra) => !allowedExtras.has(extra));
-  if (invalidExtra) throw new Error(`Unsupported reservation extra: ${invalidExtra}`);
-}
-
-function validateReservationLocations(input: ReservationInput, tenantId: string) {
-  const allowedLocations = new Set(getTenantSettings(tenantId).locations);
-  if (!allowedLocations.has(input.pickupLocation)) {
-    throw new Error("Unsupported pickup location");
-  }
-  if (!allowedLocations.has(input.returnLocation)) {
-    throw new Error("Unsupported return location");
-  }
-}
-
-function reservationsOverlap(a: ReservationInput, b: Reservation) {
-  const aStart = getRentalStart(a).getTime();
-  const aEnd = getRentalEnd(a).getTime();
-
-  return reservationBlocksPeriod(b, aStart, aEnd);
-}
-
-function validateVehicleReservationConflict(input: ReservationInput, tenantId: string) {
-  const conflict = listReservations(tenantId).find((reservation) =>
-    reservation.vehicleId === input.vehicleId &&
-    RESERVATION_BLOCKING_STATUSES.includes(reservation.status) &&
-    reservationsOverlap(input, reservation)
-  );
-
-  if (conflict) throw new Error("Vehicle is already reserved for the selected period");
-}
-
-export function createReservation(input: ReservationInput, tenantId: string): Reservation {
-  validateReservationPeriod(input);
-  const customer = validateReservationCustomer(input, tenantId);
-  validateReservationLocations(input, tenantId);
-  validateReservationExtras(input, tenantId);
-  const vehicle = validateReservationVehicle(input, tenantId);
-  validateVehicleReservationConflict(input, tenantId);
-  const billableDays = getBillableDays(input);
-  const dailyRate = input.dailyRate ?? vehicle.dailyRate;
-
-  if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
-    throw new Error("Daily rate must be greater than zero");
-  }
-
-  const totalCost = dailyRate * billableDays;
-
-  const reservation: Reservation = {
-    ...input,
-    id: getNextReservationId(tenantId),
-    customerName: `${customer.firstName} ${customer.lastName}`,
-    vehicleName: `${vehicle.make} ${vehicle.model}`,
-    vehiclePlate: vehicle.plate,
-    dailyRate,
-    totalCost,
-    createdAt: input.createdAt ?? new Date().toISOString().slice(0, 10),
-    images: normalizeImageList(input.images),
-  };
-
-  getDb()
-    .prepare("INSERT INTO reservations (id, tenant_id, data) VALUES (?, ?, ?)")
-    .run(reservation.id, tenantId, JSON.stringify(reservation));
-
-  const updatedCustomer: Customer = {
-    ...customer,
-    totalRentals: customer.totalRentals + 1,
-    totalSpent: customer.totalSpent + reservation.totalCost,
-  };
-  getDb()
-    .prepare("UPDATE customers SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?")
-    .run(JSON.stringify(updatedCustomer), customer.id, tenantId);
 
   return reservation;
 }
 
-export function createPublicReservation(input: PublicBookingInput, tenantId: string): Reservation {
-  const customerInput: CustomerInput = {
-    ...input.customer,
-    verified: false,
-  };
+export async function createPublicReservation(input: PublicBookingInput, tenantId: string): Promise<Reservation> {
+  const vehicle = await getVehicleById(input.vehicleId, tenantId);
+  if (!vehicle) throw new Error("Vehicle not found");
+  if (!isVehicleReservable(vehicle.status)) throw new Error("Vehicle is not available");
 
-  validateCustomer(customerInput);
+  const all = await listReservations(tenantId);
+  const periodStart = new Date(`${input.startDate}T09:00`).getTime();
+  const periodEnd = new Date(`${input.endDate}T09:00`).getTime();
+  const conflict = all.find(
+    (r) => r.vehicleId === input.vehicleId && RESERVATION_BLOCKING_STATUSES.includes(r.status) && reservationBlocksPeriod(r, periodStart, periodEnd)
+  );
+  if (conflict) throw new Error("Vehicle is not available for the selected period");
 
-  const existingCustomer = findDuplicateCustomer(customerInput, tenantId);
-  const customer = existingCustomer ?? createCustomerRecord(customerInput, tenantId);
+  let customer = await (async () => {
+    const [byEmail] = await db.select({ id: customers.id }).from(customers)
+      .where(and(eq(customers.tenantId, tenantId), sql`LOWER(${customers.email}) = LOWER(${input.customer.email})`)).limit(1);
+    if (byEmail) return getCustomerById(byEmail.id, tenantId);
+    return createCustomer({ ...input.customer, verified: false }, tenantId);
+  })();
 
-  const reservationInput: ReservationInput = {
-    customerId: customer.id,
-    vehicleId: input.vehicleId,
-    startDate: input.startDate,
-    endDate: input.endDate,
-    pickupTime: "09:00",
-    returnTime: "09:00",
-    pickupLocation: input.pickupLocation,
-    returnLocation: input.returnLocation,
-    extras: input.extras,
-    status: "pending",
-    notes: "Public booking",
-  };
+  if (!customer) throw new Error("Could not resolve customer");
+  if (customer.blacklisted) throw new Error("Customer is blacklisted");
 
-  return createReservation(reservationInput, tenantId);
+  const dailyRate = vehicle.dailyRate;
+  const totalCost = calculateTotalCost(input.startDate, input.endDate, dailyRate);
+
+  return db.transaction(async (tx) => {
+    const id = await getNextReservationId(tenantId, tx);
+    const createdAt = new Date().toISOString();
+
+    await tx.insert(reservations).values({
+      id, tenantId,
+      customerId: customer!.id, customerName: `${input.customer.firstName} ${input.customer.lastName}`,
+      vehicleId: vehicle.id, vehicleName: `${vehicle.make} ${vehicle.model}`, vehiclePlate: vehicle.plate,
+      startDate: input.startDate, pickupTime: "09:00",
+      endDate: input.endDate, returnTime: "09:00",
+      status: "pending",
+      dailyRate: String(dailyRate), totalCost: String(totalCost),
+      pickupLocation: input.pickupLocation, returnLocation: input.returnLocation,
+      notes: "", createdAt,
+    });
+
+    if (input.extras?.length) {
+      await tx.insert(reservationExtras).values(
+        input.extras.map((extra, position) => ({ reservationId: id, tenantId, extra, position }))
+      );
+    }
+
+    const [row] = await tx.select().from(reservations)
+      .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId))).limit(1);
+    return assembleReservation(row, tx);
+  });
+}
+
+export async function updateReservationStatus(
+  id: string, input: ReservationStatusUpdate, tenantId: string
+): Promise<Reservation> {
+  const reservation = await getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+
+  if (input.status === "cancelled") {
+    if (!["pending", "confirmed", "active"].includes(reservation.status)) {
+      throw new Error("Only pending, confirmed, or active reservations can be cancelled");
+    }
+  }
+
+  await db.update(reservations).set({
+    status: input.status,
+    ...(input.cancellationReason !== undefined ? { cancellationReason: input.cancellationReason } : {}),
+    ...(input.adjustedCost !== undefined ? { adjustedCost: String(input.adjustedCost) } : {}),
+    updatedAt: new Date(),
+  }).where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)));
+
+  if (input.status === "active") {
+    const vehicle = await getVehicleById(reservation.vehicleId, tenantId);
+    if (vehicle) await updateVehicle(reservation.vehicleId, { status: "rented" }, tenantId);
+  }
+
+  if (input.status === "cancelled") {
+    const vehicle = await getVehicleById(reservation.vehicleId, tenantId);
+    if (vehicle?.status === "rented") await updateVehicle(reservation.vehicleId, { status: "available" }, tenantId);
+  }
+
+  return (await getReservationById(id, tenantId))!;
+}
+
+export async function extendReservation(id: string, input: ExtendReservationInput, tenantId: string): Promise<Reservation> {
+  const reservation = await getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status !== "active") throw new Error("Only active reservations can be extended");
+  const currentReturnAt = new Date(`${reservation.endDate}T${reservation.returnTime}`).getTime();
+  const nextReturnAt = new Date(`${input.newEndDate}T${input.newReturnTime}`).getTime();
+  if (!Number.isFinite(nextReturnAt) || nextReturnAt <= currentReturnAt) {
+    throw new Error("New return date must be after the current return date");
+  }
+
+  await validateVehicleReservationConflict(
+    reservation.vehicleId, reservation.startDate, input.newEndDate, reservation.pickupTime, input.newReturnTime, tenantId, id
+  );
+
+  const oldDays = Math.max(1, Math.ceil((new Date(reservation.endDate).getTime() - new Date(reservation.startDate).getTime()) / 86400000));
+  const newDays = Math.max(1, Math.ceil((new Date(input.newEndDate).getTime() - new Date(reservation.startDate).getTime()) / 86400000));
+  const additionalCost = Math.max(0, Math.round((newDays - oldDays) * reservation.dailyRate * 100) / 100);
+  const newTotalCost = Math.round((reservation.totalCost + additionalCost) * 100) / 100;
+
+  await db.transaction(async (tx) => {
+    await tx.update(reservations).set({
+      endDate: input.newEndDate, returnTime: input.newReturnTime,
+      totalCost: String(newTotalCost), updatedAt: new Date(),
+    }).where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)));
+
+    await tx.insert(reservationExtensions).values({
+      id: randomUUID(), reservationId: id, tenantId,
+      previousEndDate: reservation.endDate, previousReturnTime: reservation.returnTime,
+      newEndDate: input.newEndDate, newReturnTime: input.newReturnTime,
+      additionalCost: String(additionalCost),
+    });
+  });
+
+  return (await getReservationById(id, tenantId))!;
+}
+
+export async function swapReservationVehicle(id: string, input: VehicleSwapInput, tenantId: string): Promise<Reservation> {
+  const reservation = await getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status !== "active") throw new Error("Vehicle swap is only allowed for active reservations");
+
+  const toVehicle = await getVehicleById(input.toVehicleId, tenantId);
+  if (!toVehicle) throw new Error("Target vehicle not found");
+  if (toVehicle.status !== "available") throw new Error("Replacement vehicle is not available");
+
+  await db.transaction(async (tx) => {
+    await tx.insert(vehicleSwaps).values({
+      id: randomUUID(), reservationId: id, tenantId,
+      fromVehicleId: reservation.vehicleId, fromVehicleName: reservation.vehicleName, fromVehiclePlate: reservation.vehiclePlate,
+      toVehicleId: input.toVehicleId, toVehicleName: input.toVehicleName, toVehiclePlate: input.toVehiclePlate,
+      reason: input.reason, reasonType: input.reasonType,
+      fromVehicleCondition: input.fromVehicleCondition ?? null,
+    });
+
+    await tx.update(reservations).set({
+      vehicleId: input.toVehicleId, vehicleName: input.toVehicleName, vehiclePlate: input.toVehiclePlate,
+      updatedAt: new Date(),
+    }).where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)));
+  });
+
+  const outgoingStatus =
+    input.reasonType === "breakdown" || input.reasonType === "accident"
+      ? "maintenance"
+      : "available";
+  await updateVehicle(reservation.vehicleId, { status: outgoingStatus }, tenantId);
+  await updateVehicle(input.toVehicleId, { status: "rented" }, tenantId);
+
+  return (await getReservationById(id, tenantId))!;
+}
+
+export async function completeReservationReturn(id: string, input: ReturnChecklistInput, tenantId: string): Promise<Reservation> {
+  const reservation = await getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status !== "active") throw new Error("Only active reservations can be returned");
+
+  const extraCharges = input.extraCharges ?? 0;
+  const newTotalCost = Math.round((reservation.totalCost + extraCharges) * 100) / 100;
+
+  await db.transaction(async (tx) => {
+    await tx.update(reservations).set({
+      status: "completed", totalCost: String(newTotalCost), updatedAt: new Date(),
+    }).where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)));
+
+    await tx.insert(returnChecklists).values({
+      reservationId: id, tenantId,
+      returnMileage: input.returnMileage, fuelLevel: input.fuelLevel,
+      hasDamage: input.hasDamage, damageDescription: input.damageDescription ?? null,
+      extraCharges: String(extraCharges), notes: input.notes ?? null,
+    });
+
+    if (input.returnPhotos?.length) {
+      await tx.insert(reservationImages).values(
+        input.returnPhotos.map((url, position) => ({ id: randomUUID(), reservationId: id, tenantId, url, position, source: "return" }))
+      );
+    }
+  });
+
+  await updateVehicle(
+    reservation.vehicleId,
+    { status: input.hasDamage ? "maintenance" : "available", mileage: input.returnMileage },
+    tenantId
+  );
+  if (input.returnMileage) {
+    await appendVehicleMaintenanceLog(reservation.vehicleId, {
+      date: new Date().toISOString().slice(0, 10),
+      mileage: input.returnMileage, type: "return",
+      notes: `Returned from reservation #${id}`,
+    }, tenantId);
+  }
+
+  await db.update(customers).set({
+    totalRentals: sql`${customers.totalRentals} + 1`,
+    totalSpent: sql`${customers.totalSpent} + ${String(reservation.totalCost)}`,
+    updatedAt: new Date(),
+  }).where(eq(customers.id, reservation.customerId));
+
+  return (await getReservationById(id, tenantId))!;
+}
+
+export async function markReservationPaid(id: string, input: MarkReservationPaidInput, tenantId: string): Promise<Reservation> {
+  const reservation = await getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+  if (reservation.status === "cancelled") throw new Error("Cannot mark a cancelled reservation as paid");
+  const outstanding = getReservationOutstandingAmount(reservation);
+  if (outstanding <= 0) throw new Error("Reservation is already marked as paid");
+
+  await db.insert(reservationPayments).values({
+    id: randomUUID(), reservationId: id, tenantId,
+    method: input.method, amount: String(outstanding),
+  });
+
+  return (await getReservationById(id, tenantId))!;
+}
+
+export async function updateReservationImages(id: string, images: string[], tenantId: string): Promise<Reservation> {
+  const reservation = await getReservationById(id, tenantId);
+  if (!reservation) throw new Error("Reservation not found");
+
+  await db.delete(reservationImages).where(
+    and(eq(reservationImages.reservationId, id), eq(reservationImages.tenantId, tenantId), eq(reservationImages.source, "inspection"))
+  );
+  const imgs = images.filter((u) => u?.trim());
+  if (imgs.length) {
+    await db.insert(reservationImages).values(
+      imgs.map((url, position) => ({ id: randomUUID(), reservationId: id, tenantId, url, position, source: "inspection" }))
+    );
+  }
+
+  return (await getReservationById(id, tenantId))!;
 }

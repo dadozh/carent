@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const { tenantId, role } = await getApiSession();
     assertCan(role, "read");
-    return Response.json({ vehicles: listVehicles(tenantId) });
+    return Response.json({ vehicles: await listVehicles(tenantId) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error";
     const status = message === "Unauthorized" ? 401 : message.startsWith("Forbidden") ? 403 : 500;
@@ -22,8 +22,8 @@ export async function POST(request: Request) {
     const { tenantId, userId, userName, role, requestContext } = await getApiSession();
     assertCan(role, "manageFleet");
     const data = await request.json();
-    const vehicle = createVehicle(data, tenantId);
-    logAction({
+    const vehicle = await createVehicle(data, tenantId);
+    void logAction({
       tenantId,
       userId,
       userName,
