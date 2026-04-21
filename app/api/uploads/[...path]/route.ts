@@ -39,7 +39,7 @@ export async function GET(
 
     return new NextResponse(file, {
       headers: {
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "private, max-age=31536000, immutable",
         "Content-Type": contentType,
       },
     });
@@ -51,6 +51,9 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
+    if (error instanceof Error && error.message === "Upload path is not tenant-scoped") {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
