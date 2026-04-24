@@ -12,7 +12,10 @@
     "lint": "eslint",
     "seed:demo": "node scripts/seed-demo-data.mjs",
     "pi:typecheck": "tsc --noEmit",
-    "pi:package": "npm run pi:typecheck && bash scripts/pi-package.sh"
+    "pi:package": "npm run pi:typecheck && bash scripts/pi-package.sh",
+    "release:patch": "npm version patch",
+    "release:minor": "npm version minor",
+    "release:major": "npm version major"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

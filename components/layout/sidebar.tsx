@@ -97,7 +97,7 @@ export function Sidebar() {
 
       <div className={cn("border-t p-4", collapsed && "p-2")}>
         {!collapsed && (
-          <p className="text-xs text-muted-foreground">CARENT v1.0 Prototype</p>
+          <p className="text-xs text-muted-foreground">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
         )}
       </div>
     </aside>
