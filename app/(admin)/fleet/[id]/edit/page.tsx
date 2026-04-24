@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { VehicleForm, type VehicleFormData } from "@/components/fleet/vehicle-form";
 import { uploadFiles } from "@/lib/storage";
 import { useVehicles } from "@/lib/use-vehicles";
+import { usePricingTemplates } from "@/lib/use-pricing-templates";
 import type { VehicleCategory } from "@/lib/mock-data";
 import { useI18n } from "@/lib/i18n";
 
@@ -11,6 +12,7 @@ export default function EditVehiclePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { getVehicle, updateVehicle, isLoading } = useVehicles();
+  const { templates } = usePricingTemplates();
   const { t } = useI18n();
 
   const vehicle = getVehicle(id);
@@ -43,6 +45,8 @@ export default function EditVehiclePage() {
       color: data.color,
       mileage: Number(data.mileage) || 0,
       dailyRate: Number(data.dailyRate),
+      pricingTemplateId: data.pricingMode === "template" ? data.pricingTemplateId || null : null,
+      customTiers: data.pricingMode === "custom" ? data.customTiers : [],
       status: data.status,
       location: data.location,
       fuelType: data.fuelType,
@@ -59,6 +63,7 @@ export default function EditVehiclePage() {
   return (
     <VehicleForm
       vehicle={vehicle}
+      pricingTemplates={templates}
       onSave={handleSave}
       onBack={() => router.push(`/fleet/${id}`)}
     />

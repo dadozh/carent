@@ -17,6 +17,8 @@ import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonT
 import { getTenantSettings } from "@/lib/auth-db";
 import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
+import { calculateCost } from "@/lib/pricing";
+import { getEffectiveTiers } from "@/lib/pricing-db";
 import { getReservationOutstandingAmount } from "@/lib/reservation-payments";
 import type { Transaction } from "@/lib/db";
 
@@ -228,10 +230,14 @@ async function validateVehicleReservationConflict(
   if (conflict) throw new Error(`Vehicle is already reserved during the extended period (reservation #${conflict.id})`);
 }
 
-function calculateTotalCost(startDate: string, endDate: string, dailyRate: number): number {
+function rentalDays(startDate: string, endDate: string): number {
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
-  const days = Math.max(1, Math.ceil((end - start) / 86400000));
+  return Math.max(1, Math.ceil((end - start) / 86400000));
+}
+
+function calculateTotalCost(startDate: string, endDate: string, dailyRate: number): number {
+  const days = rentalDays(startDate, endDate);
   return Math.round(days * dailyRate * 100) / 100;
 }
 
@@ -364,8 +370,10 @@ export async function createReservation(input: ReservationInput, tenantId: strin
     await validateReservationLocations(input.pickupLocation, input.returnLocation, tenantId);
   }
 
-  const dailyRate = input.dailyRate ?? vehicle.dailyRate;
-  const totalCost = calculateTotalCost(input.startDate, input.endDate, dailyRate);
+  const days = rentalDays(input.startDate, input.endDate);
+  const tiers = await getEffectiveTiers(vehicle.id, vehicle.pricingTemplateId);
+  const dailyRate = input.dailyRate ?? (tiers.length ? (tiers.find((t) => t.maxDays === null || days <= t.maxDays) ?? tiers[tiers.length - 1]).dailyRate : vehicle.dailyRate);
+  const totalCost = calculateCost(days, tiers, vehicle.dailyRate);
   await validateVehicleReservationConflict(input.vehicleId, input.startDate, input.endDate, input.pickupTime, input.returnTime, tenantId);
 
   const reservation = await db.transaction(async (tx) => {
@@ -432,8 +440,10 @@ export async function createPublicReservation(input: PublicBookingInput, tenantI
   if (!customer) throw new Error("Could not resolve customer");
   if (customer.blacklisted) throw new Error("Customer is blacklisted");
 
-  const dailyRate = vehicle.dailyRate;
-  const totalCost = calculateTotalCost(input.startDate, input.endDate, dailyRate);
+  const days = rentalDays(input.startDate, input.endDate);
+  const tiers = await getEffectiveTiers(vehicle.id, vehicle.pricingTemplateId);
+  const dailyRate = tiers.length ? (tiers.find((t) => t.maxDays === null || days <= t.maxDays) ?? tiers[tiers.length - 1]).dailyRate : vehicle.dailyRate;
+  const totalCost = calculateCost(days, tiers, vehicle.dailyRate);
 
   return db.transaction(async (tx) => {
     const id = await getNextReservationId(tenantId, tx);

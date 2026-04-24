@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { type Vehicle, type VehicleCategory } from "@/lib/mock-data";
+import { calculateCost, effectiveDailyRate } from "@/lib/pricing";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EuropeanDateInput } from "@/components/ui/european-date-input";
@@ -90,7 +91,9 @@ export function PublicBookingPage({
         )
       : 0;
 
-  const totalCost = selectedVehicle ? selectedVehicle.dailyRate * dayCount : 0;
+  const totalCost = selectedVehicle
+    ? calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
+    : 0;
 
   useEffect(() => {
     if (!pickupDate || !returnDate) return;
@@ -442,8 +445,8 @@ export function PublicBookingPage({
                           </div>
                         </div>
                         <div className="text-right shrink-0 ml-4">
-                          <p className="text-2xl font-bold text-primary">&euro;{v.dailyRate * dayCount}</p>
-                          <p className="text-xs text-muted-foreground">&euro;{v.dailyRate}{t("common.perDay")} &times; {dayCount}d</p>
+                          <p className="text-2xl font-bold text-primary">&euro;{calculateCost(dayCount, v.pricingTiers ?? [], v.dailyRate)}</p>
+                          <p className="text-xs text-muted-foreground">&euro;{effectiveDailyRate(dayCount, v.pricingTiers ?? [], v.dailyRate)}{t("common.perDay")} &times; {dayCount}d</p>
                           <Button
                             size="sm"
                             className="mt-2"
