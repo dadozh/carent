@@ -6,7 +6,7 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
-    "migrate": "node scripts/run-migrations.mjs",
+    "migrate": "node --env-file=.env.local scripts/run-migrations.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint",
