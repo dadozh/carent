@@ -8,6 +8,8 @@ import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
+import { useTenant } from "@/lib/tenant-context";
+import Image from "next/image";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -16,6 +18,7 @@ export function Sidebar() {
   const canManageUsers = useCan("manageUsers");
   const canManageSettings = useCan("manageSettings");
   const hasAuditLog = usePlanFeature("auditLog");
+  const { logoUrl } = useTenant();
 
   const navItems: { href: string; label: string; icon: React.ElementType; exact?: boolean; activeFor?: (p: string) => boolean }[] = [
     { href: "/", label: t("nav.dashboard"), icon: LayoutDashboard, exact: true },
@@ -46,14 +49,24 @@ export function Sidebar() {
     >
       <div className="flex h-16 items-center justify-between border-b px-4">
         {!collapsed && (
-          <Link href="/" className="flex items-center gap-2">
-            <Car className="h-7 w-7 text-primary" />
-            <span className="text-xl font-bold tracking-tight">CARENT</span>
+          <Link href="/" className="flex items-center gap-2 min-w-0">
+            {logoUrl ? (
+              <Image src={logoUrl} alt="Logo" width={120} height={32} className="h-8 w-auto max-w-[120px] object-contain" unoptimized />
+            ) : (
+              <>
+                <Car className="h-7 w-7 shrink-0 text-primary" />
+                <span className="text-xl font-bold tracking-tight">CARENT</span>
+              </>
+            )}
           </Link>
         )}
         {collapsed && (
           <Link href="/" className="mx-auto">
-            <Car className="h-7 w-7 text-primary" />
+            {logoUrl ? (
+              <Image src={logoUrl} alt="Logo" width={32} height={32} className="h-8 w-8 object-contain" unoptimized />
+            ) : (
+              <Car className="h-7 w-7 text-primary" />
+            )}
           </Link>
         )}
         <button

@@ -1,6 +1,6 @@
 import { can, type Action } from "@/lib/permissions";
 
-export const UPLOAD_SCOPES = ["vehicles", "customers", "reservations"] as const;
+export const UPLOAD_SCOPES = ["vehicles", "customers", "reservations", "logos"] as const;
 
 export type UploadScope = (typeof UPLOAD_SCOPES)[number];
 
@@ -8,6 +8,7 @@ const UPLOAD_SCOPE_ACTION: Record<UploadScope, Action> = {
   vehicles: "manageFleet",
   customers: "writeReservation",
   reservations: "writeReservation",
+  logos: "manageSettings",
 };
 
 export function isUploadScope(value: string): value is UploadScope {

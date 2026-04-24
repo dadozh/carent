@@ -22,6 +22,7 @@ export interface Tenant {
   slug: string;
   plan: string;
   active: boolean;
+  logoUrl?: string | null;
   createdAt: string;
 }
 
@@ -144,7 +145,7 @@ function getInvoicePeriod(billingMonth: string) {
 }
 
 function mapTenant(row: typeof tenants.$inferSelect): Tenant {
-  return { id: row.id, name: row.name, slug: row.slug, plan: row.plan, active: row.active, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, slug: row.slug, plan: row.plan, active: row.active, logoUrl: row.logoUrl ?? null, createdAt: row.createdAt.toISOString() };
 }
 
 function mapUser(row: typeof users.$inferSelect): User {
@@ -278,6 +279,10 @@ export async function getTenantByIdIncludingInactive(id: string): Promise<Tenant
 export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
   const [row] = await db.select().from(tenants).where(and(eq(tenants.slug, slug), eq(tenants.active, true))).limit(1);
   return row ? mapTenant(row) : null;
+}
+
+export async function updateTenantLogo(tenantId: string, logoUrl: string | null): Promise<void> {
+  await db.update(tenants).set({ logoUrl }).where(eq(tenants.id, tenantId));
 }
 
 export async function listTenants(): Promise<Tenant[]> {

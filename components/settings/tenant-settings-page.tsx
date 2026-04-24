@@ -1,6 +1,7 @@
 "use client";
 
 import { TenantSettingsForm } from "@/components/settings/tenant-settings-form";
+import { LogoUpload } from "@/components/settings/logo-upload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Library } from "lucide-react";
@@ -22,6 +23,15 @@ export function TenantSettingsPageClient({
         <h1 className="text-2xl font-bold tracking-tight">{t("settings.tenant.title")}</h1>
         <p className="text-muted-foreground">{t("settings.tenant.description")}</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Logo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LogoUpload />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

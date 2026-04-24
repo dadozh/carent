@@ -16,6 +16,8 @@ export interface SessionPayload {
   plan?: string;
   /** Per-tenant feature overrides; populated fresh from DB, not stored in JWT. */
   featureOverrides?: FeatureOverrides;
+  /** Populated fresh from DB on every verify — not stored in JWT. */
+  logoUrl?: string | null;
 }
 
 const COOKIE_NAME = "carent_session";
@@ -71,6 +73,7 @@ export async function verifySession(): Promise<SessionPayload | null> {
       isImpersonating: effectiveTenantId !== user.tenant_id,
       plan: tenant.plan,
       featureOverrides: await getTenantFeatureOverrides(effectiveTenantId) as FeatureOverrides,
+      logoUrl: tenant.logoUrl ?? null,
     };
   } catch {
     return null;
