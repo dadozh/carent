@@ -153,11 +153,13 @@ describeIfDb("auth-db — tenant user management", () => {
     await updateTenantSettings(tenant.id, {
       locations: ["Airport", " Downtown ", "Airport", ""],
       extras: ["GPS", "Baby Seat", "GPS"],
+      currency: "EUR",
     });
 
     expect(await getTenantSettings(tenant.id)).toEqual({
       locations: ["Airport", "Downtown"],
       extras: ["GPS", "Baby Seat"],
+      currency: "EUR",
     });
   });
 

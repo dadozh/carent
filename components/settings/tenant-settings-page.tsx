@@ -11,9 +11,11 @@ import Link from "next/link";
 export function TenantSettingsPageClient({
   initialLocations,
   initialExtras,
+  initialCurrency,
 }: {
   initialLocations: string[];
   initialExtras: string[];
+  initialCurrency: string;
 }) {
   const { t } = useI18n();
 
@@ -38,7 +40,7 @@ export function TenantSettingsPageClient({
           <CardTitle>{t("settings.tenant.cardTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <TenantSettingsForm initialLocations={initialLocations} initialExtras={initialExtras} />
+          <TenantSettingsForm initialLocations={initialLocations} initialExtras={initialExtras} initialCurrency={initialCurrency} />
         </CardContent>
       </Card>
 

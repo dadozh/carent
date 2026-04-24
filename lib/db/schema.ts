@@ -26,6 +26,7 @@ export const tenantSettings = pgTable("tenant_settings", {
   tenantId:  text("tenant_id").primaryKey().references(() => tenants.id),
   locations: text("locations").array().notNull().default([]),
   extras:    text("extras").array().notNull().default([]),
+  currency:  text("currency").notNull().default("EUR"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

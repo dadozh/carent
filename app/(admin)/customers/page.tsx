@@ -6,6 +6,8 @@ import { useReservations, type CustomerInput, type CustomerUpdateInput } from "@
 import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
 import { useI18n } from "@/lib/i18n";
+import { useCurrency } from "@/lib/tenant-context";
+import { formatMoney } from "@/lib/format-money";
 import { formatDate, isoDateToEuropeanInput, normalizeEuropeanDateInput, parseEuropeanDate } from "@/lib/date-format";
 import { EuropeanDateInput } from "@/components/ui/european-date-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +45,7 @@ export default function CustomersPage() {
   const { customers, reservations, addCustomer, updateCustomer } = useReservations();
   const canWrite = useCan("writeReservation");
   const hasAnalytics = usePlanFeature("analytics");
+  const currency = useCurrency();
 
   const [search, setSearch] = useState("");
   const [showBlacklistedOnly, setShowBlacklistedOnly] = useState(false);
@@ -474,7 +477,7 @@ export default function CustomersPage() {
                           <div className="rounded-lg border p-3 text-sm space-y-1.5">
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">{t("customers.totalSpent")}</span>
-                              <span className="text-lg font-bold text-primary">&euro;{lifetimeValue}</span>
+                              <span className="text-lg font-bold text-primary">{formatMoney(lifetimeValue, currency)}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">{t("customers.totalRentals")}</span>
@@ -483,7 +486,7 @@ export default function CustomersPage() {
                             {completedCount > 0 && (
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">{t("customers.avgPerRental")}</span>
-                                <span className="font-medium">&euro;{avgPerRental}</span>
+                                <span className="font-medium">{formatMoney(avgPerRental, currency)}</span>
                               </div>
                             )}
                           </div>
@@ -527,7 +530,7 @@ export default function CustomersPage() {
                                   </div>
                                   <div className="flex justify-between text-muted-foreground">
                                     <span>{formatDate(r.startDate)} – {formatDate(r.endDate)}</span>
-                                    <span className="font-medium text-foreground">&euro;{r.totalCost}</span>
+                                    <span className="font-medium text-foreground">{formatMoney(r.totalCost, currency)}</span>
                                   </div>
                                 </div>
                               ))}

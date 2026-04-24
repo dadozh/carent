@@ -24,6 +24,7 @@ export default async function TenantBookingPage({
       tenantName={tenant.name}
       locations={settings.locations}
       availableExtras={settings.extras}
+      currency={settings.currency}
     />
   );
 }

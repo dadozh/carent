@@ -20,10 +20,11 @@ export async function PATCH(request: Request) {
   try {
     const { tenantId, role } = await getApiSession();
     assertCan(role, "manageSettings");
-    const data = await request.json() as { locations?: string[]; extras?: string[] };
+    const data = await request.json() as { locations?: string[]; extras?: string[]; currency?: string };
     await updateTenantSettings(tenantId, {
       locations: data.locations ?? [],
       extras: data.extras ?? [],
+      currency: data.currency ?? "EUR",
     });
     return Response.json({ settings: await getTenantSettings(tenantId) });
   } catch (error) {

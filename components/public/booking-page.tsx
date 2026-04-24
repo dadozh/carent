@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { type Vehicle, type VehicleCategory } from "@/lib/mock-data";
 import { calculateCost, effectiveDailyRate } from "@/lib/pricing";
+import { formatMoney, formatMoneyCompact } from "@/lib/format-money";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EuropeanDateInput } from "@/components/ui/european-date-input";
@@ -37,11 +38,13 @@ import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 type Step = "search" | "select" | "details" | "confirm";
 
 export function PublicBookingPage({
+  currency = "EUR",
   tenantSlug,
   tenantName,
   locations,
   availableExtras,
 }: {
+  currency?: string;
   tenantSlug: string;
   tenantName: string;
   locations: string[];
@@ -445,8 +448,8 @@ export function PublicBookingPage({
                           </div>
                         </div>
                         <div className="text-right shrink-0 ml-4">
-                          <p className="text-2xl font-bold text-primary">&euro;{calculateCost(dayCount, v.pricingTiers ?? [], v.dailyRate)}</p>
-                          <p className="text-xs text-muted-foreground">&euro;{effectiveDailyRate(dayCount, v.pricingTiers ?? [], v.dailyRate)}{t("common.perDay")} &times; {dayCount}d</p>
+                          <p className="text-2xl font-bold text-primary">{formatMoney(calculateCost(dayCount, v.pricingTiers ?? [], v.dailyRate), currency)}</p>
+                          <p className="text-xs text-muted-foreground">{formatMoneyCompact(effectiveDailyRate(dayCount, v.pricingTiers ?? [], v.dailyRate), currency)}{t("common.perDay")} &times; {dayCount}d</p>
                           <Button
                             size="sm"
                             className="mt-2"
@@ -564,7 +567,7 @@ export function PublicBookingPage({
                       </div>
                     )}
                     <Separator />
-                    <div className="flex justify-between text-base font-bold"><span>{t("common.total")}</span><span className="text-primary">&euro;{totalCost}</span></div>
+                    <div className="flex justify-between text-base font-bold"><span>{t("common.total")}</span><span className="text-primary">{formatMoney(totalCost, currency)}</span></div>
                   </div>
                   <Button className="mt-4 w-full" onClick={submitBooking} disabled={submittingBooking}>
                     {submittingBooking ? t("common.loading") : t("public.completeBooking")}
@@ -592,7 +595,7 @@ export function PublicBookingPage({
                 <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.pickup")}</span><span className="font-medium">{formatDate(pickupDate)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.return")}</span><span className="font-medium">{formatDate(returnDate)}</span></div>
                 <Separator />
-                <div className="flex justify-between font-bold"><span>{t("common.total")}</span><span className="text-primary">&euro;{totalCost}</span></div>
+                <div className="flex justify-between font-bold"><span>{t("common.total")}</span><span className="text-primary">{formatMoney(totalCost, currency)}</span></div>
               </CardContent>
             </Card>
 
