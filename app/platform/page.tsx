@@ -10,7 +10,7 @@ import { impersonateTenantAction, toggleTenantActiveAction, changeTenantPlanActi
 import { PLAN_SLUGS, PLAN_LABELS } from "@/lib/plan-features";
 
 function formatCreatedAt(value: string) {
-  const [datePart = "", timePart = ""] = value.split(" ");
+  const [datePart = "", timePart = ""] = value.split("T");
   const [year, month, day] = datePart.split("-");
   const [hours = "00", minutes = "00"] = timePart.split(":");
   if (!year || !month || !day) return value;
