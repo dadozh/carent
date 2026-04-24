@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    tags: ["v*"]
 
 jobs:
   deploy:
@@ -26,7 +26,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/dadozh/carent:latest
+          tags: |
+            ghcr.io/dadozh/carent:latest
+            ghcr.io/dadozh/carent:${{ github.ref_name }}
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1
