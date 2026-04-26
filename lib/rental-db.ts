@@ -17,7 +17,7 @@ import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonT
 import { getTenantSettings } from "@/lib/auth-db";
 import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
-import { calculateCost } from "@/lib/pricing";
+import { calculateCost, resolveTier } from "@/lib/pricing";
 import { getEffectiveTiers } from "@/lib/pricing-db";
 import { getReservationOutstandingAmount } from "@/lib/reservation-payments";
 import type { Transaction } from "@/lib/db";
@@ -372,8 +372,11 @@ export async function createReservation(input: ReservationInput, tenantId: strin
 
   const days = rentalDays(input.startDate, input.endDate);
   const tiers = await getEffectiveTiers(vehicle.id, vehicle.pricingTemplateId);
-  const dailyRate = input.dailyRate ?? (tiers.length ? (tiers.find((t) => t.maxDays === null || days <= t.maxDays) ?? tiers[tiers.length - 1]).dailyRate : vehicle.dailyRate);
-  const totalCost = calculateCost(days, tiers, vehicle.dailyRate);
+  const tierRate = resolveTier(tiers, days)?.dailyRate ?? vehicle.dailyRate;
+  const dailyRate = input.dailyRate ?? tierRate;
+  const totalCost = input.dailyRate != null
+    ? Math.round(input.dailyRate * days * 100) / 100
+    : calculateCost(days, tiers, vehicle.dailyRate);
   await validateVehicleReservationConflict(input.vehicleId, input.startDate, input.endDate, input.pickupTime, input.returnTime, tenantId);
 
   const reservation = await db.transaction(async (tx) => {
@@ -442,7 +445,7 @@ export async function createPublicReservation(input: PublicBookingInput, tenantI
 
   const days = rentalDays(input.startDate, input.endDate);
   const tiers = await getEffectiveTiers(vehicle.id, vehicle.pricingTemplateId);
-  const dailyRate = tiers.length ? (tiers.find((t) => t.maxDays === null || days <= t.maxDays) ?? tiers[tiers.length - 1]).dailyRate : vehicle.dailyRate;
+  const dailyRate = resolveTier(tiers, days)?.dailyRate ?? vehicle.dailyRate;
   const totalCost = calculateCost(days, tiers, vehicle.dailyRate);
 
   return db.transaction(async (tx) => {

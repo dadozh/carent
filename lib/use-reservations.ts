@@ -10,10 +10,11 @@ export type CustomerInput = Omit<Customer, "id" | "verified" | "totalRentals" | 
   images?: string[];
 };
 
-export type ReservationInput = Omit<Reservation, "id" | "createdAt" | "vehiclePlate" | "images"> & {
+export type ReservationInput = Omit<Reservation, "id" | "createdAt" | "vehiclePlate" | "images" | "dailyRate"> & {
   createdAt?: string;
   vehiclePlate?: string;
   images?: string[];
+  dailyRate?: number;
 };
 
 const RESERVATIONS_CHANGE_EVENT = "carent-reservations-change";

@@ -65,6 +65,7 @@ import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
 import { useCurrency } from "@/lib/tenant-context";
 import { formatMoney, formatMoneyCompact } from "@/lib/format-money";
+import { calculateCost, effectiveDailyRate as tierDailyRate } from "@/lib/pricing";
 import { uploadFiles } from "@/lib/storage";
 import {
   getReservationOutstandingAmount,
@@ -251,12 +252,17 @@ export default function ReservationsPage() {
     ? Math.ceil(rentalDurationMs / (1000 * 60 * 60 * 24))
     : 0;
   const parsedDailyRateOverride = Number(newBooking.dailyRateOverride);
+  const hasOverride = Number.isFinite(parsedDailyRateOverride) && parsedDailyRateOverride > 0;
   const effectiveDailyRate = selectedVehicle
-    ? Number.isFinite(parsedDailyRateOverride) && parsedDailyRateOverride > 0
+    ? hasOverride
       ? parsedDailyRateOverride
-      : selectedVehicle.dailyRate
+      : tierDailyRate(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
     : 0;
-  const totalCost = effectiveDailyRate * dayCount;
+  const totalCost = selectedVehicle
+    ? hasOverride
+      ? parsedDailyRateOverride * dayCount
+      : calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
+    : 0;
   const customerError = getCustomerError();
 
   const statusFilters: { value: ReservationStatus | "all"; label: string }[] = [
@@ -671,7 +677,7 @@ export default function ReservationsPage() {
         endDate: newBooking.endDate,
         returnTime: newBooking.returnTime,
         status: "confirmed",
-        dailyRate: effectiveDailyRate,
+        dailyRate: hasOverride ? parsedDailyRateOverride : undefined,
         totalCost,
         extras: newBooking.extras,
         pickupLocation: newBooking.pickupLocation,
