@@ -36,7 +36,7 @@ export function Sidebar() {
       href: "/fleet",
       label: t("nav.fleet"),
       icon: Car,
-      activeFor: (p) => p === "/fleet" || p.startsWith("/fleet/"),
+      activeFor: (p) => (p === "/fleet" || p.startsWith("/fleet/")) && !p.startsWith("/fleet/catalog"),
     },
     { href: "/reservations", label: t("nav.reservations"), icon: CalendarDays },
     { href: "/customers", label: t("nav.customers"), icon: Contact },
