@@ -64,7 +64,7 @@ import { useTenantSettings } from "@/lib/use-tenant-settings";
 import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
 import { useCurrency } from "@/lib/tenant-context";
-import { formatMoney, formatMoneyCompact } from "@/lib/format-money";
+import { formatMoney, formatMoneyCompact, vehiclePriceDisplay } from "@/lib/format-money";
 import { calculateCost, effectiveDailyRate as tierDailyRate } from "@/lib/pricing";
 import { uploadFiles } from "@/lib/storage";
 import {
@@ -260,7 +260,7 @@ export default function ReservationsPage() {
     : 0;
   const totalCost = selectedVehicle
     ? hasOverride
-      ? parsedDailyRateOverride * dayCount
+      ? Math.round(parsedDailyRateOverride * dayCount * 100) / 100
       : calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
     : 0;
   const customerError = getCustomerError();
@@ -1248,7 +1248,7 @@ export default function ReservationsPage() {
                                   <p className="text-xs text-destructive">{t("booking.vehicleUnavailableForPeriod")}</p>
                                 )}
                               </div>
-                              <p className="text-sm font-bold text-primary shrink-0">{formatMoneyCompact(v.dailyRate, currency)}{t("common.perDay")}</p>
+                              <p className="text-sm font-bold text-primary shrink-0">{vehiclePriceDisplay(v, currency)}{t("common.perDay")}</p>
                             </button>
                           );
                         })}
@@ -2550,7 +2550,7 @@ export default function ReservationsPage() {
                                 {hasConflict && <span className="text-destructive ml-1">· {t("booking.vehicleUnavailableForPeriod")}</span>}
                               </p>
                             </div>
-                            <p className="text-sm font-bold text-primary shrink-0">&euro;{v.dailyRate}{t("common.perDay")}</p>
+                            <p className="text-sm font-bold text-primary shrink-0">{vehiclePriceDisplay(v, currency)}{t("common.perDay")}</p>
                           </button>
                         );
                       })}

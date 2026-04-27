@@ -11,19 +11,13 @@ import {
   listTenantInvoices,
 } from "@/lib/auth-db";
 import { formatDate } from "@/lib/date-format";
+import { formatMoney as _formatMoney } from "@/lib/format-money";
 import { countBillableVehiclesForMonth } from "@/lib/vehicle-db";
 import { PLAN_FEATURE_LIST, canUsePlanFeature, type FeatureOverrides } from "@/lib/plan-features";
 import { setTenantFeatureOverrideAction } from "@/app/platform/actions";
 import { notFound } from "next/navigation";
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat("de-CH", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
+function formatMoney(value: number) { return _formatMoney(value, "EUR"); }
 
 function formatMonth(value: string) {
   const [year, month] = value.split("-");

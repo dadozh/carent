@@ -13,18 +13,7 @@ import { useI18n } from "@/lib/i18n";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 import { useCan } from "@/lib/role-context";
 import { useCurrency } from "@/lib/tenant-context";
-import { formatMoneyCompact } from "@/lib/format-money";
-import type { Vehicle } from "@/lib/mock-data";
-
-function vehiclePriceDisplay(vehicle: Vehicle, currency: string): string {
-  const tiers = vehicle.pricingTiers ?? [];
-  if (!tiers.length) return formatMoneyCompact(vehicle.dailyRate, currency);
-  const rates = tiers.map((t) => t.dailyRate);
-  const min = Math.min(...rates);
-  const max = Math.max(...rates);
-  if (min === max) return formatMoneyCompact(min, currency);
-  return `${formatMoneyCompact(min, currency)}–${formatMoneyCompact(max, currency)}`;
-}
+import { vehiclePriceDisplay } from "@/lib/format-money";
 
 export default function FleetPage() {
   const { t } = useI18n();

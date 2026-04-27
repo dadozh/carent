@@ -16,6 +16,12 @@ export async function GET() {
   }
 }
 
+const VALID_CURRENCIES = ["EUR", "USD", "RSD", "BAM"] as const;
+type ValidCurrency = typeof VALID_CURRENCIES[number];
+function sanitizeCurrency(value: unknown): ValidCurrency {
+  return VALID_CURRENCIES.includes(value as ValidCurrency) ? (value as ValidCurrency) : "EUR";
+}
+
 export async function PATCH(request: Request) {
   try {
     const { tenantId, role } = await getApiSession();
@@ -24,7 +30,7 @@ export async function PATCH(request: Request) {
     await updateTenantSettings(tenantId, {
       locations: data.locations ?? [],
       extras: data.extras ?? [],
-      currency: data.currency ?? "EUR",
+      currency: sanitizeCurrency(data.currency),
     });
     return Response.json({ settings: await getTenantSettings(tenantId) });
   } catch (error) {

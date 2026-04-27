@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { pricingTemplates, pricingTemplateTiers, vehiclePricingTiers } from "@/lib/db/schema";
 import type { PricingTier, PricingTemplate } from "@/lib/pricing";
@@ -16,15 +16,19 @@ export async function getTemplatesForTenant(tenantId: string): Promise<PricingTe
     .where(eq(pricingTemplates.tenantId, tenantId))
     .orderBy(pricingTemplates.createdAt);
 
-  return Promise.all(rows.map(async (tmpl) => {
-    const tierRows = await db.select().from(pricingTemplateTiers)
-      .where(eq(pricingTemplateTiers.templateId, tmpl.id))
-      .orderBy(pricingTemplateTiers.position);
-    return {
-      id: tmpl.id,
-      name: tmpl.name,
-      tiers: tierRows.map((t) => ({ maxDays: t.maxDays, dailyRate: toNum(t.dailyRate) })),
-    };
+  if (!rows.length) return [];
+
+  const templateIds = rows.map((r) => r.id);
+  const allTierRows = await db.select().from(pricingTemplateTiers)
+    .where(inArray(pricingTemplateTiers.templateId, templateIds))
+    .orderBy(pricingTemplateTiers.position);
+
+  return rows.map((tmpl) => ({
+    id: tmpl.id,
+    name: tmpl.name,
+    tiers: allTierRows
+      .filter((t) => t.templateId === tmpl.id)
+      .map((t) => ({ maxDays: t.maxDays, dailyRate: toNum(t.dailyRate) })),
   }));
 }
 
@@ -40,13 +44,15 @@ export async function createTemplate(tenantId: string, name: string, tiers: Pric
 }
 
 export async function updateTemplate(id: string, tenantId: string, name: string, tiers: PricingTier[]): Promise<void> {
-  await db.update(pricingTemplates).set({ name }).where(and(eq(pricingTemplates.id, id), eq(pricingTemplates.tenantId, tenantId)));
-  await db.delete(pricingTemplateTiers).where(eq(pricingTemplateTiers.templateId, id));
-  if (tiers.length) {
-    await db.insert(pricingTemplateTiers).values(
-      tiers.map((t, position) => ({ id: `ptt_${randomUUID()}`, templateId: id, maxDays: t.maxDays, dailyRate: String(t.dailyRate), position }))
-    );
-  }
+  await db.transaction(async (tx) => {
+    await tx.update(pricingTemplates).set({ name }).where(and(eq(pricingTemplates.id, id), eq(pricingTemplates.tenantId, tenantId)));
+    await tx.delete(pricingTemplateTiers).where(eq(pricingTemplateTiers.templateId, id));
+    if (tiers.length) {
+      await tx.insert(pricingTemplateTiers).values(
+        tiers.map((t, position) => ({ id: `ptt_${randomUUID()}`, templateId: id, maxDays: t.maxDays, dailyRate: String(t.dailyRate), position }))
+      );
+    }
+  });
 }
 
 export async function deleteTemplate(id: string, tenantId: string): Promise<void> {
