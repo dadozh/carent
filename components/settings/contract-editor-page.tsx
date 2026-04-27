@@ -346,7 +346,7 @@ export function ContractEditorPage({ language }: { language: Locale }) {
                     <div
                       key={block.id}
                       onClick={() => setSelectedBlockId(block.id)}
-                      className={`absolute overflow-hidden rounded border text-left ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-dashed border-slate-300"} bg-white/85`}
+                      className={`absolute flex flex-col overflow-hidden rounded border text-left ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-dashed border-slate-300"} bg-white/85`}
                       style={{
                         left: `${blockLeft(block.x)}%`,
                         top: `${blockTop(block.y)}%`,
@@ -401,8 +401,8 @@ export function ContractEditorPage({ language }: { language: Locale }) {
                           onBlur={() => setEditingBlockId(null)}
                           onKeyDown={(e) => { if (e.key === "Escape") setEditingBlockId(null); }}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-full resize-none bg-transparent px-2 py-1 outline-none"
-                          style={{ ...textStyle, minHeight: `${blockMinH(block.height, draft.pageHeight)}%` }}
+                          className="w-full flex-1 resize-none bg-transparent px-2 py-1 outline-none"
+                          style={textStyle}
                         />
                       ) : (
                         <div
