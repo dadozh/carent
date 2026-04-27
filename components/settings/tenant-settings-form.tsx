@@ -17,17 +17,13 @@ export function TenantSettingsForm({
   initialLocations,
   initialExtras,
   initialCurrency,
-  initialContractLanguages,
   initialUiLanguages,
-  initialDefaultContractLanguage,
   initialDefaultUiLanguage,
 }: {
   initialLocations: string[];
   initialExtras: string[];
   initialCurrency: string;
-  initialContractLanguages: Locale[];
   initialUiLanguages: Locale[];
-  initialDefaultContractLanguage: Locale;
   initialDefaultUiLanguage: Locale;
 }) {
   const [state, action, pending] = useActionState<TenantSettingsState, FormData>(updateTenantSettingsAction, undefined);
@@ -71,15 +67,6 @@ export function TenantSettingsForm({
             disabled={pending}
           />
 
-          <LanguageSettingsSection
-            title={t("settings.tenant.contractLanguages")}
-            help={t("settings.tenant.contractLanguagesHelp")}
-            checkboxName="contractLanguages"
-            defaultName="defaultContractLanguage"
-            initialLanguages={initialContractLanguages}
-            initialDefaultLanguage={initialDefaultContractLanguage}
-            disabled={pending}
-          />
         </CardContent>
       </Card>
 

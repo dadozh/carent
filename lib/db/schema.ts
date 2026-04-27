@@ -302,6 +302,33 @@ export const reservationImages = pgTable("reservation_images", {
   index("res_images_reservation_idx").on(t.tenantId, t.reservationId),
 ]);
 
+export const contractTemplates = pgTable("contract_templates", {
+  id:               text("id").primaryKey(),
+  tenantId:         text("tenant_id").notNull().references(() => tenants.id),
+  language:         text("language").notNull(),
+  name:             text("name").notNull(),
+  draftContent:     text("draft_content").notNull(),
+  publishedContent: text("published_content"),
+  updatedAt:        timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  publishedAt:      timestamp("published_at", { withTimezone: true }),
+}, (t) => [
+  unique("contract_templates_tenant_language_uniq").on(t.tenantId, t.language),
+  index("contract_templates_tenant_idx").on(t.tenantId, t.language),
+]);
+
+export const generatedContracts = pgTable("generated_contracts", {
+  id:            text("id").primaryKey(),
+  tenantId:      text("tenant_id").notNull().references(() => tenants.id),
+  reservationId: text("reservation_id").notNull(),
+  language:      text("language").notNull(),
+  templateId:    text("template_id").references(() => contractTemplates.id),
+  fileUrl:       text("file_url").notNull(),
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique("generated_contracts_tenant_reservation_language_uniq").on(t.tenantId, t.reservationId, t.language),
+  index("generated_contracts_tenant_reservation_idx").on(t.tenantId, t.reservationId),
+]);
+
 // ─── Audit logs ───────────────────────────────────────────────────────────────
 
 export const auditLogs = pgTable("audit_logs", {

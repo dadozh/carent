@@ -54,25 +54,23 @@ export async function updateTenantSettingsAction(
   if (!can(session.role, "manageSettings")) redirect("/");
 
   try {
+    const previousSettings = await getTenantSettings(session.tenantId);
     const nextSettings = {
       locations: parseList(`${formData.get("locations") ?? ""}`),
       extras: parseList(`${formData.get("extras") ?? ""}`),
       currency: (["EUR", "USD", "RSD", "BAM"] as const).includes(
         formData.get("currency") as "EUR"
       ) ? `${formData.get("currency")}` : "EUR",
-      contractLanguages: parseLanguageList(formData, "contractLanguages"),
       uiLanguages: parseLanguageList(formData, "uiLanguages"),
     };
-    const defaultContractLanguage = parseDefaultLanguage(formData, "defaultContractLanguage", nextSettings.contractLanguages);
     const defaultUiLanguage = parseDefaultLanguage(formData, "defaultUiLanguage", nextSettings.uiLanguages);
-    const previousSettings = await getTenantSettings(session.tenantId);
     await updateTenantSettings(session.tenantId, {
       locations: nextSettings.locations,
       extras: nextSettings.extras,
       currency: nextSettings.currency,
-      contractLanguages: nextSettings.contractLanguages,
+      contractLanguages: previousSettings.contractLanguages,
+      defaultContractLanguage: previousSettings.defaultContractLanguage,
       uiLanguages: nextSettings.uiLanguages,
-      defaultContractLanguage,
       defaultUiLanguage,
     });
     const requestContext = await getAuditRequestContext();
@@ -90,7 +88,6 @@ export async function updateTenantSettingsAction(
         metadata: [
           { key: "locationsCount", value: String(nextSettings.locations.length) },
           { key: "extrasCount", value: String(nextSettings.extras.length) },
-          { key: "contractLanguages", value: nextSettings.contractLanguages.join(", ") },
           { key: "uiLanguages", value: nextSettings.uiLanguages.join(", ") },
         ],
         changes: [
@@ -103,16 +100,6 @@ export async function updateTenantSettingsAction(
             field: "extras",
             oldValue: previousSettings.extras.join(", ") || null,
             newValue: nextSettings.extras.join(", ") || null,
-          },
-          {
-            field: "contractLanguages",
-            oldValue: previousSettings.contractLanguages.join(", ") || null,
-            newValue: nextSettings.contractLanguages.join(", ") || null,
-          },
-          {
-            field: "defaultContractLanguage",
-            oldValue: previousSettings.defaultContractLanguage,
-            newValue: defaultContractLanguage,
           },
           {
             field: "uiLanguages",

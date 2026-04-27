@@ -9,9 +9,7 @@ export default async function TenantSettingsPage() {
       initialLocations={settings.locations}
       initialExtras={settings.extras}
       initialCurrency={settings.currency}
-      initialContractLanguages={settings.contractLanguages}
       initialUiLanguages={settings.uiLanguages}
-      initialDefaultContractLanguage={settings.defaultContractLanguage}
       initialDefaultUiLanguage={settings.defaultUiLanguage}
     />
   );

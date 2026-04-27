@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Car, CalendarDays, LayoutDashboard, ChevronLeft, ChevronRight, Users, Settings, Contact, ClipboardList } from "lucide-react";
+import { Car, CalendarDays, LayoutDashboard, ChevronLeft, ChevronRight, Users, Settings, Contact, ClipboardList, FileText, Tag, Library } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
@@ -10,6 +10,16 @@ import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
 import { useTenant } from "@/lib/tenant-context";
 import Image from "next/image";
+
+type NavChild = { href: string; label: string; icon: React.ElementType; activeFor?: (p: string) => boolean };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  exact?: boolean;
+  activeFor?: (p: string) => boolean;
+  children?: NavChild[];
+};
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -20,7 +30,7 @@ export function Sidebar() {
   const hasAuditLog = usePlanFeature("auditLog");
   const { logoUrl } = useTenant();
 
-  const navItems: { href: string; label: string; icon: React.ElementType; exact?: boolean; activeFor?: (p: string) => boolean }[] = [
+  const navItems: NavItem[] = [
     { href: "/", label: t("nav.dashboard"), icon: LayoutDashboard, exact: true },
     {
       href: "/fleet",
@@ -36,7 +46,32 @@ export function Sidebar() {
       icon: Users,
       activeFor: (p: string) => p === "/settings/users" || p.startsWith("/settings/users/"),
     }] : []),
-    ...(canManageSettings ? [{ href: "/settings", label: t("nav.settings"), icon: Settings, exact: true }] : []),
+    ...(canManageSettings ? [{
+      href: "/settings",
+      label: t("nav.settings"),
+      icon: Settings,
+      exact: true,
+      children: [
+        {
+          href: "/settings/contracts",
+          label: t("nav.contracts"),
+          icon: FileText,
+          activeFor: (p: string) => p === "/settings/contracts" || p.startsWith("/settings/contracts/"),
+        },
+        {
+          href: "/settings/pricing",
+          label: t("nav.pricing"),
+          icon: Tag,
+          activeFor: (p: string) => p === "/settings/pricing" || p.startsWith("/settings/pricing/"),
+        },
+        {
+          href: "/fleet/catalog",
+          label: t("nav.catalog"),
+          icon: Library,
+          activeFor: (p: string) => p === "/fleet/catalog" || p.startsWith("/fleet/catalog/"),
+        },
+      ],
+    }] : []),
     ...(canManageSettings && hasAuditLog ? [{ href: "/audit", label: t("nav.auditLog"), icon: ClipboardList }] : []),
   ];
 
@@ -89,21 +124,43 @@ export function Sidebar() {
               : pathname.startsWith(item.href);
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                collapsed && "justify-center px-2"
-              )}
-              title={collapsed ? item.label : undefined}
-            >
-              <item.icon className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
+            <div key={item.href}>
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  collapsed && "justify-center px-2"
+                )}
+                title={collapsed ? item.label : undefined}
+              >
+                <item.icon className="h-5 w-5 shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+
+              {!collapsed && item.children && item.children.map((child) => {
+                const childActive = child.activeFor
+                  ? child.activeFor(pathname)
+                  : pathname === child.href || pathname.startsWith(child.href + "/");
+                return (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    className={cn(
+                      "mt-0.5 flex items-center gap-2 rounded-md py-1.5 pl-9 pr-3 text-sm transition-colors",
+                      childActive
+                        ? "font-medium text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <child.icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{child.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
       </nav>
