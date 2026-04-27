@@ -21,6 +21,10 @@ import {
   type Locale,
 } from "@/lib/i18n-config";
 import {
+  normalizeExtraEntries,
+  type ExtraEntry,
+} from "@/lib/extra";
+import {
   normalizeLocationEntries,
   type LocationEntry,
 } from "@/lib/location";
@@ -40,7 +44,7 @@ export interface Tenant {
 
 export interface TenantSettings {
   locations: LocationEntry[];
-  extras: string[];
+  extras: ExtraEntry[];
   currency: string;
   contractLanguages: Locale[];
   uiLanguages: Locale[];
@@ -95,7 +99,11 @@ export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
     { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
     { key: "Downtown", labels: { en: "Downtown", sr: "Centar grada" } },
   ],
-  extras: ["GPS", "Wi-Fi", "Child Seat"],
+  extras: [
+    { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 0 },
+    { key: "Wi-Fi", labels: { en: "Wi-Fi", sr: "Wi-Fi" }, price: 0 },
+    { key: "Child Seat", labels: { en: "Child Seat", sr: "Dečje sedište" }, price: 0 },
+  ],
   currency: "EUR",
   contractLanguages: [...DEFAULT_UI_LOCALES],
   uiLanguages: [...DEFAULT_UI_LOCALES],
@@ -411,7 +419,7 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
   const [row] = await db.select().from(tenantSettings).where(eq(tenantSettings.tenantId, tenantId)).limit(1);
   if (!row) return DEFAULT_TENANT_SETTINGS;
   const locations = normalizeLocationEntries(row.locations);
-  const extras = uniqueNonEmpty(row.extras ?? []);
+  const extras = normalizeExtraEntries(row.extras);
   const contractLanguages = normalizeLocaleSelection(row.contractLanguages ?? [], DEFAULT_TENANT_SETTINGS.contractLanguages);
   const uiLanguages = normalizeLocaleSelection(row.uiLanguages ?? [], DEFAULT_TENANT_SETTINGS.uiLanguages);
   return {
@@ -427,7 +435,7 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
 
 export async function updateTenantSettings(tenantId: string, settings: TenantSettings): Promise<Tenant> {
   const locations = normalizeLocationEntries(settings.locations);
-  const extras = uniqueNonEmpty(settings.extras);
+  const extras = normalizeExtraEntries(settings.extras);
   const currency = settings.currency || DEFAULT_TENANT_SETTINGS.currency;
   const languageSettings = normalizeTenantLanguageSettings(settings);
   if (!locations.length) throw new Error("At least one location is required");

@@ -8,7 +8,11 @@ const DEFAULT_SETTINGS: TenantSettings = {
     { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
     { key: "Downtown", labels: { en: "Downtown", sr: "Centar grada" } },
   ],
-  extras: ["GPS", "Wi-Fi", "Child Seat"],
+  extras: [
+    { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 0 },
+    { key: "Wi-Fi", labels: { en: "Wi-Fi", sr: "Wi-Fi" }, price: 0 },
+    { key: "Child Seat", labels: { en: "Child Seat", sr: "Dečje sedište" }, price: 0 },
+  ],
   currency: "EUR",
   contractLanguages: ["en", "sr"],
   uiLanguages: ["en", "sr"],

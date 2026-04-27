@@ -2,6 +2,7 @@ import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 import { DEFAULT_TENANT_SETTINGS, getTenantSettings, updateTenantSettings } from "@/lib/auth-db";
 import { getMissingPublishedContractLanguages } from "@/lib/contract-template-db";
+import { normalizeExtraEntries } from "@/lib/extra";
 import { isLocale, type Locale } from "@/lib/i18n-config";
 import { normalizeLocationEntries } from "@/lib/location";
 
@@ -43,7 +44,7 @@ export async function PATCH(request: Request) {
     assertCan(role, "manageSettings");
     const data = await request.json() as {
       locations?: unknown;
-      extras?: string[];
+      extras?: unknown;
       currency?: string;
       contractLanguages?: string[];
       uiLanguages?: string[];
@@ -58,7 +59,7 @@ export async function PATCH(request: Request) {
     }
     await updateTenantSettings(tenantId, {
       locations: normalizeLocationEntries(data.locations),
-      extras: data.extras ?? [],
+      extras: normalizeExtraEntries(data.extras),
       currency: sanitizeCurrency(data.currency),
       contractLanguages,
       uiLanguages,

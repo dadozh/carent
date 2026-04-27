@@ -253,6 +253,36 @@ describeIfDb("rental-db — reservations", () => {
     expect((await getVehicleById(vehicle.id, T1))?.dailyRate).toBe(35);
   });
 
+  it("includes selected extra prices in reservation total cost", async () => {
+    const { createReservation, createCustomer } = await getRentalDb();
+    const { createVehicle } = await getVehicleDb();
+    const { updateTenantSettings, getTenantSettings } = await getAuthDb();
+
+    const currentSettings = await getTenantSettings(T1);
+    await updateTenantSettings(T1, {
+      ...currentSettings,
+      extras: [
+        { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 5 },
+        { key: "child-seat", labels: { en: "Child Seat", sr: "Dečje sedište" }, price: 12.5 },
+      ],
+    });
+
+    const vehicle = await createVehicle(vehicleInput({ plate: "RATE-EXTRA-1", dailyRate: 35 }), T1);
+    const customer = await createCustomer(
+      customerInput({ email: "rate-extra@example.com", licenseNumber: "LIC-RATE-EXTRA" }),
+      T1
+    );
+
+    const reservation = await createReservation({
+      ...reservationInput(customer.id, vehicle.id),
+      extras: ["GPS", "child-seat"],
+    }, T1);
+
+    expect(reservation.dailyRate).toBe(35);
+    expect(reservation.totalCost).toBe(210);
+    expect(reservation.extras).toEqual(["GPS", "child-seat"]);
+  });
+
   it("public booking creates a pending reservation in the correct tenant", async () => {
     const { createPublicReservation, listReservations } = await getRentalDb();
     const { vehicle } = await seedForTenant(T1, "PUB-T1");
@@ -278,6 +308,42 @@ describeIfDb("rental-db — reservations", () => {
     expect(reservation.status).toBe("pending");
     expect(await listReservations(T1)).toHaveLength(2);
     expect(await listReservations(T2)).toHaveLength(0);
+  });
+
+  it("public booking includes selected extra prices in total cost", async () => {
+    const { createPublicReservation } = await getRentalDb();
+    const { updateTenantSettings, getTenantSettings } = await getAuthDb();
+    const { vehicle } = await seedForTenant(T1, "PUB-EXTRA-T1");
+
+    const currentSettings = await getTenantSettings(T1);
+    await updateTenantSettings(T1, {
+      ...currentSettings,
+      extras: [
+        { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 5 },
+        { key: "wifi", labels: { en: "Wi-Fi", sr: "Wi-Fi" }, price: 7.5 },
+      ],
+    });
+
+    const reservation = await createPublicReservation({
+      vehicleId: vehicle.id,
+      startDate: "2030-07-01",
+      endDate: "2030-07-05",
+      pickupLocation: "Airport",
+      returnLocation: "Airport",
+      extras: ["GPS", "wifi"],
+      customer: {
+        firstName: "Public",
+        lastName: "Priced",
+        email: "public-priced@example.com",
+        phone: "+381601111112",
+        licenseNumber: "LIC-PUBLIC-PRICED",
+        licenseExpiry: "2031-12-31",
+        address: "Novi Sad",
+      },
+    }, T1);
+
+    expect(reservation.totalCost).toBe(190);
+    expect(reservation.extras).toEqual(["GPS", "wifi"]);
   });
 
   it("public booking cannot book a vehicle from another tenant", async () => {

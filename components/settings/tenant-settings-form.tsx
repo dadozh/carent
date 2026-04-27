@@ -5,6 +5,7 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { updateTenantSettingsAction, type TenantSettingsState } from "@/app/(admin)/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { type ExtraEntry } from "@/lib/extra";
 import { ALL_LOCALES, LOCALE_LABELS, useI18n, type Locale } from "@/lib/i18n";
 import { slugifyLocationKey, type LocationEntry } from "@/lib/location";
 
@@ -25,9 +26,19 @@ function createEmptyLocation(): LocationEntry {
   return { key: "", labels: { en: "" } };
 }
 
+function createEmptyExtra(): ExtraEntry {
+  return { key: "", labels: { en: "" }, price: 0 };
+}
+
 function buildLocationTableColumns(localeCount: number) {
   return {
     gridTemplateColumns: `repeat(${localeCount}, minmax(0, 1.4fr)) minmax(7rem, 0.8fr)`,
+  };
+}
+
+function buildExtraTableColumns(localeCount: number) {
+  return {
+    gridTemplateColumns: `repeat(${localeCount}, minmax(0, 1.2fr)) minmax(8rem, 0.7fr) minmax(7rem, 0.8fr)`,
   };
 }
 
@@ -39,7 +50,7 @@ export function TenantSettingsForm({
   initialDefaultUiLanguage,
 }: {
   initialLocations: LocationEntry[];
-  initialExtras: string[];
+  initialExtras: ExtraEntry[];
   initialCurrency: string;
   initialUiLanguages: Locale[];
   initialDefaultUiLanguage: Locale;
@@ -48,6 +59,9 @@ export function TenantSettingsForm({
   const { t } = useI18n();
   const [locations, setLocations] = useState<LocationEntry[]>(
     initialLocations.length ? initialLocations : [createEmptyLocation()]
+  );
+  const [extras, setExtras] = useState<ExtraEntry[]>(
+    initialExtras.length ? initialExtras : [createEmptyExtra()]
   );
   const [selectedUiLanguages, setSelectedUiLanguages] = useState<Locale[]>(initialUiLanguages);
   const [selectedDefaultUiLanguage, setSelectedDefaultUiLanguage] = useState<Locale>(initialDefaultUiLanguage);
@@ -88,9 +102,53 @@ export function TenantSettingsForm({
     setLocations((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
+  function updateExtraLabel(index: number, locale: Locale, value: string) {
+    setExtras((current) =>
+      current.map((extra, currentIndex) => {
+        if (currentIndex !== index) return extra;
+
+        const nextLabels = { ...extra.labels, [locale]: value };
+        if (!value.trim()) {
+          delete nextLabels[locale];
+        }
+
+        const nextExtra: ExtraEntry = {
+          ...extra,
+          labels: nextLabels,
+        };
+
+        if (locale === "en" && !extra.key) {
+          nextExtra.key = slugifyLocationKey(value);
+        }
+
+        return nextExtra;
+      })
+    );
+  }
+
+  function updateExtraPrice(index: number, value: string) {
+    const price = Number(value);
+    setExtras((current) =>
+      current.map((extra, currentIndex) =>
+        currentIndex === index
+          ? { ...extra, price: Number.isFinite(price) && price >= 0 ? price : 0 }
+          : extra
+      )
+    );
+  }
+
+  function addExtra() {
+    setExtras((current) => [...current, createEmptyExtra()]);
+  }
+
+  function removeExtra(index: number) {
+    setExtras((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  }
+
   return (
     <form action={action} className="space-y-6">
       <input type="hidden" name="locations" value={JSON.stringify(locations)} />
+      <input type="hidden" name="extras" value={JSON.stringify(extras)} />
 
       <Card>
         <CardHeader>
@@ -232,18 +290,127 @@ export function TenantSettingsForm({
             </Button>
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="tenant-extras" className="text-sm font-medium">
-              {t("settings.tenant.extras")}
-            </label>
-            <textarea
-              id="tenant-extras"
-              name="extras"
-              defaultValue={initialExtras.join("\n")}
-              rows={5}
-              className="min-h-28 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
-            <p className="text-xs text-muted-foreground">{t("settings.tenant.extrasHelp")}</p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("settings.tenant.extras")}</label>
+              <p className="text-xs text-muted-foreground">{t("settings.tenant.extrasHelp")}</p>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-border bg-background">
+              <div
+                className="hidden border-b border-border bg-muted/40 px-4 py-3 md:grid md:gap-3"
+                style={buildExtraTableColumns(activeLocationLocales.length)}
+              >
+                {activeLocationLocales.map((locale) => (
+                  <div
+                    key={locale}
+                    className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                  >
+                    {LOCALE_LABELS[locale]}
+                  </div>
+                ))}
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {t("settings.tenant.extraPrice")}
+                </div>
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Action
+                </div>
+              </div>
+
+              <div className="divide-y divide-border">
+                {extras.map((extra, index) => (
+                  <div key={`${extra.key || "new"}-${index}`} className="px-4 py-4">
+                    <div className="space-y-4 md:hidden">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {activeLocationLocales.map((locale) => (
+                          <div key={locale} className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">
+                              {LOCALE_LABELS[locale]}
+                            </label>
+                            <input
+                              type="text"
+                              value={extra.labels[locale] ?? ""}
+                              disabled={pending}
+                              onChange={(event) => updateExtraLabel(index, locale, event.target.value)}
+                              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">
+                          {t("settings.tenant.extraPrice")}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={extra.price}
+                          disabled={pending}
+                          onChange={(event) => updateExtraPrice(index, event.target.value)}
+                          className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={pending || extras.length === 1}
+                          onClick={() => removeExtra(index)}
+                          className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {t("settings.tenant.removeLocation")}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      className="hidden items-start gap-3 md:grid"
+                      style={buildExtraTableColumns(activeLocationLocales.length)}
+                    >
+                      {activeLocationLocales.map((locale) => (
+                        <div key={locale}>
+                          <input
+                            type="text"
+                            value={extra.labels[locale] ?? ""}
+                            disabled={pending}
+                            onChange={(event) => updateExtraLabel(index, locale, event.target.value)}
+                            className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                          />
+                        </div>
+                      ))}
+                      <div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={extra.price}
+                          disabled={pending}
+                          onChange={(event) => updateExtraPrice(index, event.target.value)}
+                          className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={pending || extras.length === 1}
+                          onClick={() => removeExtra(index)}
+                          className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {t("settings.tenant.removeLocation")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Button type="button" variant="outline" disabled={pending} onClick={addExtra}>
+              <Plus className="h-4 w-4" />
+              {t("settings.tenant.addExtra")}
+            </Button>
           </div>
         </CardContent>
       </Card>

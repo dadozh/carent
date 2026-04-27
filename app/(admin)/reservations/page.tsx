@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { EuropeanDateInput } from "@/components/ui/european-date-input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Search,
   Plus,
@@ -58,6 +59,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { LOCALE_LABELS, useI18n } from "@/lib/i18n";
+import { calculateExtraTotal, resolveExtraLabel } from "@/lib/extra";
 import { resolveLocationLabel } from "@/lib/location";
 import { useVehicles } from "@/lib/use-vehicles";
 import { useReservations } from "@/lib/use-reservations";
@@ -260,11 +262,39 @@ export default function ReservationsPage() {
       ? parsedDailyRateOverride
       : tierDailyRate(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
     : 0;
+  const extraOptions = tenantSettings.extras;
+  const extrasTotal = calculateExtraTotal(newBooking.extras, extraOptions, dayCount);
+  const vehicleSubtotal = selectedVehicle
+    ? Math.round(effectiveDailyRate * dayCount * 100) / 100
+    : 0;
+  const extrasDailyTotal = dayCount > 0
+    ? Math.round((extrasTotal / dayCount) * 100) / 100
+    : 0;
+  const selectedReservationDurationMs = selectedReservation
+    ? getRentalDurationMs(
+        selectedReservation.startDate,
+        selectedReservation.pickupTime,
+        selectedReservation.endDate,
+        selectedReservation.returnTime
+      )
+    : 0;
+  const selectedReservationDayCount = selectedReservationDurationMs >= 24 * 60 * 60 * 1000
+    ? Math.ceil(selectedReservationDurationMs / (1000 * 60 * 60 * 24))
+    : 0;
+  const selectedReservationExtrasTotal = selectedReservation
+    ? calculateExtraTotal(selectedReservation.extras, extraOptions, selectedReservationDayCount)
+    : 0;
+  const selectedReservationExtrasDailyTotal = selectedReservationDayCount > 0
+    ? Math.round((selectedReservationExtrasTotal / selectedReservationDayCount) * 100) / 100
+    : 0;
+  const selectedReservationVehicleSubtotal = selectedReservation
+    ? Math.max(0, Math.round((selectedReservation.totalCost - selectedReservationExtrasTotal) * 100) / 100)
+    : 0;
   const totalCost = selectedVehicle
     ? hasOverride
-      ? Math.round(parsedDailyRateOverride * dayCount * 100) / 100
-      : calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
-    : 0;
+      ? Math.round((parsedDailyRateOverride * dayCount + extrasTotal) * 100) / 100
+      : Math.round((calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate) + extrasTotal) * 100) / 100
+    : extrasTotal;
   const customerError = getCustomerError();
 
   const statusFilters: { value: ReservationStatus | "all"; label: string }[] = [
@@ -286,7 +316,6 @@ export default function ReservationsPage() {
 
   const currentStepIndex = steps.findIndex((s) => s.key === bookingStep);
   const bookingLocations = tenantSettings.locations;
-  const extraOptions = tenantSettings.extras;
 
   const statusLabels: Record<ReservationStatus, string> = {
     pending: t("res.status.pending"),
@@ -294,12 +323,6 @@ export default function ReservationsPage() {
     active: t("res.status.active"),
     completed: t("res.status.completed"),
     cancelled: t("res.status.cancelled"),
-  };
-
-  const extraLabels: Record<string, string> = {
-    GPS: t("booking.gps"),
-    "Wi-Fi": t("booking.wifi"),
-    "Child Seat": t("booking.childSeat"),
   };
 
   useEffect(() => {
@@ -1034,7 +1057,7 @@ export default function ReservationsPage() {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {reservation.extras.length > 0
-                        ? reservation.extras.map((extra) => extraLabels[extra] ?? extra).join(", ")
+                        ? reservation.extras.map((extra) => resolveExtraLabel(extra, locale, extraOptions)).join(", ")
                         : t("common.none")}
                     </p>
                   </div>
@@ -1447,17 +1470,17 @@ export default function ReservationsPage() {
                 {bookingStep === "extras" && (
                   <div className="space-y-2">
                     {extraOptions.map((extra) => {
-                      const Icon = extraIcons[extra] || Navigation;
-                      const selected = newBooking.extras.includes(extra);
+                      const Icon = extraIcons[extra.key] || Navigation;
+                      const selected = newBooking.extras.includes(extra.key);
                       return (
                         <button
-                          key={extra}
+                          key={extra.key}
                           onClick={() =>
                             setNewBooking((current) => ({
                               ...current,
                               extras: selected
-                                ? current.extras.filter((e) => e !== extra)
-                                : [...current.extras, extra],
+                                ? current.extras.filter((e) => e !== extra.key)
+                                : [...current.extras, extra.key],
                             }))
                           }
                           className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
@@ -1465,7 +1488,8 @@ export default function ReservationsPage() {
                           }`}
                         >
                           <Icon className="h-5 w-5 text-muted-foreground" />
-                          <span className="text-sm font-medium flex-1">{extraLabels[extra] ?? extra}</span>
+                          <span className="text-sm font-medium flex-1">{resolveExtraLabel(extra.key, locale, extraOptions)}</span>
+                          <span className="text-xs text-muted-foreground">{formatMoney(extra.price, currency)}</span>
                           {selected && <Check className="h-4 w-4 text-primary" />}
                         </button>
                       );
@@ -1491,7 +1515,7 @@ export default function ReservationsPage() {
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{t("booking.datesLocation")}</span>
+                        <span className="text-muted-foreground">{t("booking.rentalPeriod")}</span>
                         <span className="font-medium text-right">
                           {newBooking.startDate && newBooking.endDate
                             ? formatDateTimeRange(newBooking.startDate, newBooking.pickupTime, newBooking.endDate, newBooking.returnTime)
@@ -1513,11 +1537,15 @@ export default function ReservationsPage() {
                       {newBooking.extras.length > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">{t("res.extras")}</span>
-                          <span className="font-medium">{newBooking.extras.map((extra) => extraLabels[extra] ?? extra).join(", ")}</span>
+                          <span className="font-medium">{newBooking.extras.map((extra) => resolveExtraLabel(extra, locale, extraOptions)).join(", ")}</span>
                         </div>
                       )}
+                    </div>
+                    <div className="space-y-1 rounded-lg border border-border bg-background p-3">
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {t("booking.rateOverride")}
+                      </label>
                       <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">{t("res.dailyRate")}</label>
                         <Input
                           type="number"
                           min="0.01"
@@ -1532,14 +1560,37 @@ export default function ReservationsPage() {
                             : t("booking.defaultRateHelp")}
                         </p>
                       </div>
-                      <Separator />
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{t("res.dailyRate")}</span>
-                        <span className="font-medium">{formatMoneyCompact(effectiveDailyRate, currency)}</span>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background p-3">
+                      <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {t("booking.priceBreakdown")}
                       </div>
-                      <div className="flex justify-between text-sm font-bold">
-                        <span>{t("common.total")}</span>
-                        <span className="text-primary">{formatMoney(totalCost, currency)}</span>
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-4 text-sm">
+                          <div>
+                            <div className="font-medium">{t("booking.vehicleRental")}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatMoneyCompact(effectiveDailyRate, currency)}{t("common.perDay")} × {dayCount} {dayCount === 1 ? t("common.day") : t("common.days")}
+                            </div>
+                          </div>
+                          <span className="font-medium">{formatMoney(vehicleSubtotal, currency)}</span>
+                        </div>
+                        {extrasTotal > 0 && (
+                          <div className="flex items-start justify-between gap-4 text-sm">
+                            <div>
+                              <div className="font-medium">{t("booking.extrasDaily")}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatMoneyCompact(extrasDailyTotal, currency)}{t("common.perDay")} × {dayCount} {dayCount === 1 ? t("common.day") : t("common.days")}
+                              </div>
+                            </div>
+                            <span className="font-medium">{formatMoney(extrasTotal, currency)}</span>
+                          </div>
+                        )}
+                        <Separator />
+                        <div className="flex justify-between text-sm font-bold">
+                          <span>{t("common.total")}</span>
+                          <span className="text-primary">{formatMoney(totalCost, currency)}</span>
+                        </div>
                       </div>
                     </div>
                     <div>
@@ -1650,460 +1701,444 @@ export default function ReservationsPage() {
 
                 <Separator />
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <User className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{selectedReservation.customerName}</p>
-                      <p className="text-xs text-muted-foreground">{t("res.customer")}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Car className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{selectedReservation.vehicleName}</p>
-                      <p className="text-xs text-muted-foreground">{t("res.vehicle")}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">
-                        {formatReservationPeriod(selectedReservation)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{t("res.rentalPeriod")}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">
-                        {resolveLocationLabel(selectedReservation.pickupLocation, locale, bookingLocations)} &rarr; {resolveLocationLabel(selectedReservation.returnLocation, locale, bookingLocations)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{t("res.locations")}</p>
-                    </div>
-                  </div>
-                </div>
+                <Tabs defaultValue="overview" className="space-y-4">
+                  <TabsList className="w-full justify-start overflow-x-auto">
+                    <TabsTrigger value="overview">{t("booking.overview")}</TabsTrigger>
+                    <TabsTrigger value="photos">{t("booking.photos")}</TabsTrigger>
+                    <TabsTrigger value="documents">{t("booking.documents")}</TabsTrigger>
+                    <TabsTrigger value="history">{t("booking.history")}</TabsTrigger>
+                  </TabsList>
 
-                <Separator />
-
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">{t("res.extras")}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedReservation.extras.length > 0 ? (
-                      selectedReservation.extras.map((extra) => (
-                        <Badge key={extra} variant="outline">
-                          {extraLabels[extra] ?? extra}
-                        </Badge>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">{t("common.none")}</p>
-                    )}
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="rounded-lg bg-muted/50 p-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{t("res.dailyRate")}</span>
-                    <span>{formatMoneyCompact(selectedReservation.dailyRate, currency)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold mt-1">
-                    <span>{t("common.total")}</span>
-                    <span className="text-primary">{formatMoney(selectedReservation.totalCost, currency)}</span>
-                  </div>
-                </div>
-
-                {selectedReservation.notes && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">{t("res.notes")}</p>
-                      <p className="text-sm">{selectedReservation.notes}</p>
-                    </div>
-                  </>
-                )}
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-muted-foreground">{t("booking.customerPhotos")}</p>
-                    {selectedReservationCustomer && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => customerDetailFileRef.current?.click()}
-                        >
-                          <ImagePlus className="mr-1 h-3.5 w-3.5" />
-                          {t("booking.addPhotos")}
-                        </Button>
-                        <input
-                          ref={customerDetailFileRef}
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => void handleCustomerDetailFiles(e.target.files)}
-                        />
-                      </>
-                    )}
-                  </div>
-                  {selectedReservationCustomer && normalizePhotoUrls(selectedReservationCustomer.images).length ? (
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {normalizePhotoUrls(selectedReservationCustomer.images).map((image, index) => (
-                        <div
-                          key={image}
-                          className="relative aspect-video overflow-hidden rounded-md bg-muted"
-                        >
-                          <Image
-                            src={image}
-                            alt={`${t("booking.customerPhotos")} ${index + 1}`}
-                            fill
-                            className="object-cover"
-                            unoptimized
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t("booking.noPhotos")}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-muted-foreground">{t("booking.reservationPhotos")}</p>
-                    <>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => reservationDetailFileRef.current?.click()}
-                      >
-                        <ImagePlus className="mr-1 h-3.5 w-3.5" />
-                        {t("booking.addPhotos")}
-                      </Button>
-                      <input
-                        ref={reservationDetailFileRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => void handleReservationDetailFiles(e.target.files)}
-                      />
-                    </>
-                  </div>
-                  {normalizePhotoUrls(selectedReservation.images).length ? (
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {normalizePhotoUrls(selectedReservation.images).map((image, index) => (
-                        <div
-                          key={image}
-                          className="relative aspect-video overflow-hidden rounded-md bg-muted"
-                        >
-                          <Image
-                            src={image}
-                            alt={`${t("booking.reservationPhotos")} ${index + 1}`}
-                            fill
-                            className="object-cover"
-                            unoptimized
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t("booking.noPhotos")}</p>
-                  )}
-                </div>
-
-                <Separator />
-
-                <p className="text-xs text-muted-foreground">
-                  {t("res.created")}: {formatDate(selectedReservation.createdAt)}
-                </p>
-
-                {selectedReservation.status !== "cancelled" && !isReservationFullyPaid(selectedReservation) && canMarkAsPaid && (
-                  <>
-                    <Separator />
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      disabled={paying}
-                      onClick={handleMarkAsPaid}
-                    >
-                      <Check className="mr-2 h-4 w-4" />
-                      {paying ? t("res.markingAsPaid") : t("res.markAsPaid")}
-                    </Button>
-                  </>
-                )}
-
-                {["pending", "confirmed", "active"].includes(selectedReservation.status) && (canStartRental || canCancel || canSwap || canExtend || canCompleteReturn) && (
-                  <>
-                    <Separator />
-                    {selectedReservation.status === "confirmed" && canStartRental && (
-                      <>
-                        <Button
-                          className="w-full"
-                          disabled={startingRental}
-                          onClick={handleStartRental}
-                        >
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          {startingRental ? t("res.startingRental") : t("res.startRental")}
-                        </Button>
-                        {startRentalError && (
-                          <p className="text-sm text-destructive">{startRentalError}</p>
-                        )}
-                      </>
-                    )}
-                    {selectedReservation.status === "active" && canCompleteReturn && (
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          setReturnMileage("");
-                          setReturnFuelLevel("full");
-                          setReturnHasDamage(false);
-                          setReturnDamageDescription("");
-                          setReturnExtraCharges("");
-                          setReturnNotes("");
-                          setReturnPhotos([]);
-                          setShowReturnDialog(true);
-                        }}
-                      >
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        {t("res.completeReturn")}
-                      </Button>
-                    )}
-                    {selectedReservation.status === "active" && canExtend && (
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          setExtendDateInput("");
-                          setExtendIsoDate("");
-                          setExtendReturnTime(selectedReservation.returnTime ?? "10:00");
-                          setExtendError("");
-                          setShowExtendDialog(true);
-                        }}
-                      >
-                        <CalendarPlus className="mr-2 h-4 w-4" />
-                        {t("res.extendRental")}
-                      </Button>
-                    )}
-                    {selectedReservation.status === "active" && canSwap && (
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          setSwapReason("");
-                          setSwapReasonType("breakdown");
-                          setSwapOldCondition("");
-                          setSwapVehicleId("");
-                          setSwapVehicleSearch("");
-                          setSwapFilterAvailable(false);
-                          setSwapFilterTransmission("");
-                          setSwapFilterCategory("");
-                          setShowSwapDialog(true);
-                        }}
-                      >
-                        <Car className="mr-2 h-4 w-4" />
-                        {t("res.swapVehicle")}
-                      </Button>
-                    )}
-                    {canCancel && (
-                      <Button
-                        variant="outline"
-                        className="w-full border-destructive/30 text-destructive hover:bg-destructive/10"
-                        disabled={cancelling}
-                        onClick={() => {
-                          setCancelReason("");
-                          setCancelAdjustedCost(String(selectedReservation.totalCost));
-                          setConfirmCancelReservation(selectedReservation);
-                        }}
-                      >
-                        {cancelling ? t("res.cancelling") : t("res.cancelReservation")}
-                      </Button>
-                    )}
-                  </>
-                )}
-
-                {selectedReservation.cancellationReason && (
-                  <>
-                    <Separator />
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">{t("res.cancellationReasonLabel")}</p>
-                      <p className="text-sm">{selectedReservation.cancellationReason}</p>
-                    </div>
-                  </>
-                )}
-
-                {selectedReservation.extensions && selectedReservation.extensions.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">{t("res.extensionHistory")}</p>
-                      {selectedReservation.extensions.map((ext, i) => (
-                        <div key={i} className="rounded-lg border p-3 text-xs space-y-1">
-                          <p className="text-muted-foreground">{t("res.extendedOn")}: {formatDate(ext.extendedAt.slice(0, 10))}</p>
-                          <p>{formatDate(ext.previousEndDate)} → {formatDate(ext.newEndDate)}</p>
-                          <p className="font-medium">+€{ext.additionalCost}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {selectedReservation.vehicleSwaps && selectedReservation.vehicleSwaps.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">{t("res.vehicleHistory")}</p>
-                      {selectedReservation.vehicleSwaps.map((swap, i) => (
-                        <div key={i} className="rounded-lg border p-3 text-xs space-y-1">
-                          <p className="text-muted-foreground">{formatDate(swap.swappedAt.slice(0, 10))}</p>
-                          <p><span className="text-muted-foreground">{t("res.originalVehicle")}:</span> {swap.fromVehicleName} · {swap.fromVehiclePlate}</p>
-                          <p><span className="text-muted-foreground">{t("res.replacedWith")}:</span> {swap.toVehicleName} · {swap.toVehiclePlate}</p>
-                          <p className="text-muted-foreground italic">{swap.reason}</p>
-                          {swap.fromVehicleCondition && (
-                            <p className="text-muted-foreground italic">{swap.fromVehicleCondition}</p>
+                  <TabsContent value="overview" className="space-y-5">
+                    <section className="space-y-3">
+                      <div className="rounded-xl border border-border bg-muted/20 p-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="flex items-start gap-3">
+                            <User className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">{t("res.customer")}</p>
+                              <p className="text-sm font-medium">{selectedReservation.customerName}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <Car className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">{t("res.vehicle")}</p>
+                              <p className="text-sm font-medium">{selectedReservation.vehicleName}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3 sm:col-span-2">
+                            <Calendar className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">{t("booking.rentalPeriod")}</p>
+                              <p className="text-sm font-medium">{formatReservationPeriod(selectedReservation)}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">{t("booking.pickup")}</p>
+                              <p className="text-sm font-medium">{resolveLocationLabel(selectedReservation.pickupLocation, locale, bookingLocations)}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">{t("booking.return")}</p>
+                              <p className="text-sm font-medium">{resolveLocationLabel(selectedReservation.returnLocation, locale, bookingLocations)}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-2 sm:col-span-2">
+                            <p className="text-xs text-muted-foreground">{t("res.extras")}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {selectedReservation.extras.length > 0 ? (
+                                selectedReservation.extras.map((extra) => (
+                                  <Badge key={extra} variant="outline">
+                                    {resolveExtraLabel(extra, locale, extraOptions)}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <p className="text-sm text-muted-foreground">{t("common.none")}</p>
+                              )}
+                            </div>
+                          </div>
+                          {selectedReservation.notes && (
+                            <div className="space-y-1 sm:col-span-2">
+                              <p className="text-xs text-muted-foreground">{t("res.notes")}</p>
+                              <p className="text-sm">{selectedReservation.notes}</p>
+                            </div>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+                      </div>
+                    </section>
 
-                {selectedReservation.returnChecklist && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">{t("res.returnChecklistSection")}</p>
-                      <div className="rounded-lg border p-3 text-xs space-y-1.5">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">{t("res.returnedAt")}</span>
-                          <span>{formatDate(selectedReservation.returnChecklist.completedAt.slice(0, 10))}</span>
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                      <section className="space-y-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("booking.priceBreakdown")}</p>
+                        <div className="rounded-xl border border-border bg-background p-4">
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between gap-4 text-sm">
+                              <div>
+                                <div className="font-medium">{t("booking.vehicleRental")}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {formatMoneyCompact(selectedReservation.dailyRate, currency)}{t("common.perDay")} × {selectedReservationDayCount} {selectedReservationDayCount === 1 ? t("common.day") : t("common.days")}
+                                </div>
+                              </div>
+                              <span className="font-medium">{formatMoney(selectedReservationVehicleSubtotal, currency)}</span>
+                            </div>
+                            {selectedReservationExtrasTotal > 0 && (
+                              <div className="flex items-start justify-between gap-4 text-sm">
+                                <div>
+                                  <div className="font-medium">{t("booking.extrasDaily")}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {formatMoneyCompact(selectedReservationExtrasDailyTotal, currency)}{t("common.perDay")} × {selectedReservationDayCount} {selectedReservationDayCount === 1 ? t("common.day") : t("common.days")}
+                                  </div>
+                                </div>
+                                <span className="font-medium">{formatMoney(selectedReservationExtrasTotal, currency)}</span>
+                              </div>
+                            )}
+                            <Separator />
+                            <div className="flex justify-between text-sm font-bold">
+                              <span>{t("common.total")}</span>
+                              <span className="text-primary">{formatMoney(selectedReservation.totalCost, currency)}</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">{t("res.returnedMileage")}</span>
-                          <span>{selectedReservation.returnChecklist.returnMileage.toLocaleString()} km</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">{t("res.fuelLevel")}</span>
-                          <span className="flex items-center gap-1">
-                            <Fuel className="h-3 w-3" />
-                            {t(`res.fuel${selectedReservation.returnChecklist.fuelLevel.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join("")}` as Parameters<typeof t>[0])}
-                          </span>
-                        </div>
-                        {selectedReservation.returnChecklist.hasDamage && (
-                          <div className="pt-1 border-t border-destructive/20">
-                            <p className="text-destructive font-medium flex items-center gap-1">
-                              <Wrench className="h-3 w-3" />
-                              {t("res.damageDescription")}
-                            </p>
-                            {selectedReservation.returnChecklist.damageDescription && (
-                              <p className="text-muted-foreground mt-0.5">{selectedReservation.returnChecklist.damageDescription}</p>
+                      </section>
+
+                      <div className="space-y-4">
+                        <section className="space-y-3">
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("res.payment")}</p>
+                          <div className="rounded-xl border border-border bg-background p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <Badge
+                                variant={isReservationFullyPaid(selectedReservation) ? "secondary" : "outline"}
+                                className={isReservationFullyPaid(selectedReservation) ? "bg-green-100 text-green-800 hover:bg-green-100" : "text-muted-foreground"}
+                              >
+                                {isReservationFullyPaid(selectedReservation) ? t("res.paid") : t("res.unpaid")}
+                              </Badge>
+                              <span className="text-sm font-medium">
+                                {formatMoney(getReservationOutstandingAmount(selectedReservation), currency)}
+                              </span>
+                            </div>
+                            {selectedReservation.status !== "cancelled" && !isReservationFullyPaid(selectedReservation) && canMarkAsPaid && (
+                              <Button variant="outline" className="mt-3 w-full" disabled={paying} onClick={handleMarkAsPaid}>
+                                <Check className="mr-2 h-4 w-4" />
+                                {paying ? t("res.markingAsPaid") : t("res.markAsPaid")}
+                              </Button>
                             )}
                           </div>
-                        )}
-                        {!!selectedReservation.returnChecklist.extraCharges && selectedReservation.returnChecklist.extraCharges > 0 && (
-                          <div className="flex justify-between font-medium">
-                            <span className="text-muted-foreground">{t("res.extraCharges")}</span>
-                            <span className="text-destructive">+€{selectedReservation.returnChecklist.extraCharges}</span>
-                          </div>
-                        )}
-                        {selectedReservation.returnChecklist.notes && (
-                          <p className="text-muted-foreground italic pt-1">{selectedReservation.returnChecklist.notes}</p>
+                        </section>
+
+                        {["pending", "confirmed", "active"].includes(selectedReservation.status) && (canStartRental || canCancel || canSwap || canExtend || canCompleteReturn) && (
+                          <section className="space-y-3">
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("booking.rentalActions")}</p>
+                            <div className="space-y-2 rounded-xl border border-border bg-background p-4">
+                              {selectedReservation.status === "confirmed" && canStartRental && (
+                                <>
+                                  <Button className="w-full" disabled={startingRental} onClick={handleStartRental}>
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    {startingRental ? t("res.startingRental") : t("res.startRental")}
+                                  </Button>
+                                  {startRentalError && <p className="text-sm text-destructive">{startRentalError}</p>}
+                                </>
+                              )}
+                              {selectedReservation.status === "active" && canCompleteReturn && (
+                                <Button
+                                  className="w-full"
+                                  onClick={() => {
+                                    setReturnMileage("");
+                                    setReturnFuelLevel("full");
+                                    setReturnHasDamage(false);
+                                    setReturnDamageDescription("");
+                                    setReturnExtraCharges("");
+                                    setReturnNotes("");
+                                    setReturnPhotos([]);
+                                    setShowReturnDialog(true);
+                                  }}
+                                >
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                  {t("res.completeReturn")}
+                                </Button>
+                              )}
+                              {selectedReservation.status === "active" && canExtend && (
+                                <Button
+                                  variant="outline"
+                                  className="w-full"
+                                  onClick={() => {
+                                    setExtendDateInput("");
+                                    setExtendIsoDate("");
+                                    setExtendReturnTime(selectedReservation.returnTime ?? "10:00");
+                                    setExtendError("");
+                                    setShowExtendDialog(true);
+                                  }}
+                                >
+                                  <CalendarPlus className="mr-2 h-4 w-4" />
+                                  {t("res.extendRental")}
+                                </Button>
+                              )}
+                              {selectedReservation.status === "active" && canSwap && (
+                                <Button
+                                  variant="outline"
+                                  className="w-full"
+                                  onClick={() => {
+                                    setSwapReason("");
+                                    setSwapReasonType("breakdown");
+                                    setSwapOldCondition("");
+                                    setSwapVehicleId("");
+                                    setSwapVehicleSearch("");
+                                    setSwapFilterAvailable(false);
+                                    setSwapFilterTransmission("");
+                                    setSwapFilterCategory("");
+                                    setShowSwapDialog(true);
+                                  }}
+                                >
+                                  <Car className="mr-2 h-4 w-4" />
+                                  {t("res.swapVehicle")}
+                                </Button>
+                              )}
+                              {canCancel && (
+                                <Button
+                                  variant="outline"
+                                  className="w-full border-destructive/30 text-destructive hover:bg-destructive/10"
+                                  disabled={cancelling}
+                                  onClick={() => {
+                                    setCancelReason("");
+                                    setCancelAdjustedCost(String(selectedReservation.totalCost));
+                                    setConfirmCancelReservation(selectedReservation);
+                                  }}
+                                >
+                                  {cancelling ? t("res.cancelling") : t("res.cancelReservation")}
+                                </Button>
+                              )}
+                            </div>
+                          </section>
                         )}
                       </div>
-                      {hasReturnPhotos && selectedReservation.returnChecklist.returnPhotos && selectedReservation.returnChecklist.returnPhotos.length > 0 && (
-                        <div className="mt-2 grid grid-cols-3 gap-2">
-                          {selectedReservation.returnChecklist.returnPhotos.map((url, i) => (
-                            <div key={url} className="relative aspect-video overflow-hidden rounded-md bg-muted">
-                              <Image src={url} alt={`${t("res.returnPhotos")} ${i + 1}`} fill className="object-cover" unoptimized />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {t("res.created")}: {formatDate(selectedReservation.createdAt)}
+                    </p>
+                  </TabsContent>
+
+                  <TabsContent value="photos" className="space-y-4">
+                    <div className="space-y-4 rounded-xl border border-border bg-background p-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium">{t("booking.customerPhotos")}</p>
+                          {selectedReservationCustomer && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => customerDetailFileRef.current?.click()}
+                              >
+                                <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                                {t("booking.addPhotos")}
+                              </Button>
+                              <input
+                                ref={customerDetailFileRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => void handleCustomerDetailFiles(e.target.files)}
+                              />
+                            </>
+                          )}
+                        </div>
+                        {selectedReservationCustomer && normalizePhotoUrls(selectedReservationCustomer.images).length ? (
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {normalizePhotoUrls(selectedReservationCustomer.images).map((image, index) => (
+                              <div key={image} className="relative aspect-video overflow-hidden rounded-md bg-muted">
+                                <Image
+                                  src={image}
+                                  alt={`${t("booking.customerPhotos")} ${index + 1}`}
+                                  fill
+                                  className="object-cover"
+                                  unoptimized
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{t("booking.noPhotos")}</p>
+                        )}
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium">{t("booking.reservationPhotos")}</p>
+                          <>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => reservationDetailFileRef.current?.click()}
+                            >
+                              <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                              {t("booking.addPhotos")}
+                            </Button>
+                            <input
+                              ref={reservationDetailFileRef}
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => void handleReservationDetailFiles(e.target.files)}
+                            />
+                          </>
+                        </div>
+                        {normalizePhotoUrls(selectedReservation.images).length ? (
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {normalizePhotoUrls(selectedReservation.images).map((image, index) => (
+                              <div key={image} className="relative aspect-video overflow-hidden rounded-md bg-muted">
+                                <Image
+                                  src={image}
+                                  alt={`${t("booking.reservationPhotos")} ${index + 1}`}
+                                  fill
+                                  className="object-cover"
+                                  unoptimized
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{t("booking.noPhotos")}</p>
+                        )}
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="documents" className="space-y-4">
+                    <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+                      <p className="text-sm text-muted-foreground">{t("booking.contractLanguage")}</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {tenantContractLanguages.map((contractLocale, index) => (
+                          <a
+                            key={contractLocale}
+                            href={`/api/reservations/${encodeURIComponent(selectedReservation.id)}/contract?lang=${contractLocale}`}
+                            className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors ${
+                              index === 0
+                                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                : "border border-border bg-background hover:bg-muted"
+                            }`}
+                          >
+                            <FileText className="h-4 w-4" />
+                            {t("booking.downloadContract")} ({LOCALE_LABELS[contractLocale]})
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="history" className="space-y-4">
+                    <div className="space-y-4">
+                      {selectedReservation.cancellationReason && (
+                        <div className="space-y-1 rounded-xl border border-border bg-background p-4">
+                          <p className="text-xs font-medium text-muted-foreground">{t("res.cancellationReasonLabel")}</p>
+                          <p className="text-sm">{selectedReservation.cancellationReason}</p>
+                        </div>
+                      )}
+
+                      {selectedReservation.extensions && selectedReservation.extensions.length > 0 && (
+                        <div className="space-y-2 rounded-xl border border-border bg-background p-4">
+                          <p className="text-xs font-medium text-muted-foreground">{t("res.extensionHistory")}</p>
+                          {selectedReservation.extensions.map((ext, i) => (
+                            <div key={i} className="rounded-lg border p-3 text-xs space-y-1">
+                              <p className="text-muted-foreground">{t("res.extendedOn")}: {formatDate(ext.extendedAt.slice(0, 10))}</p>
+                              <p>{formatDate(ext.previousEndDate)} → {formatDate(ext.newEndDate)}</p>
+                              <p className="font-medium">+€{ext.additionalCost}</p>
                             </div>
                           ))}
                         </div>
                       )}
-                    </div>
-                  </>
-                )}
 
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">{t("res.payment")}</p>
-                  {getReservationPayments(selectedReservation).length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          className={
-                            isReservationFullyPaid(selectedReservation)
-                              ? "bg-green-100 text-green-800 hover:bg-green-100"
-                              : "bg-amber-100 text-amber-800 hover:bg-amber-100"
-                          }
-                        >
-                          <Check className="mr-1 h-3 w-3" />
-                          {isReservationFullyPaid(selectedReservation) ? t("res.paid") : t("res.partiallyPaid")}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {getReservationPayments(selectedReservation).length} {t("res.paymentEntries")}
-                        </span>
-                      </div>
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        <div className="flex justify-between gap-3">
-                          <span>{t("res.paidAmount")}</span>
-                          <span className="font-medium text-foreground">{formatMoney(getReservationPaidAmount(selectedReservation), currency)}</span>
+                      {selectedReservation.vehicleSwaps && selectedReservation.vehicleSwaps.length > 0 && (
+                        <div className="space-y-2 rounded-xl border border-border bg-background p-4">
+                          <p className="text-xs font-medium text-muted-foreground">{t("res.vehicleHistory")}</p>
+                          {selectedReservation.vehicleSwaps.map((swap, i) => (
+                            <div key={i} className="rounded-lg border p-3 text-xs space-y-1">
+                              <p className="text-muted-foreground">{formatDate(swap.swappedAt.slice(0, 10))}</p>
+                              <p><span className="text-muted-foreground">{t("res.originalVehicle")}:</span> {swap.fromVehicleName} · {swap.fromVehiclePlate}</p>
+                              <p><span className="text-muted-foreground">{t("res.replacedWith")}:</span> {swap.toVehicleName} · {swap.toVehiclePlate}</p>
+                              <p className="text-muted-foreground italic">{swap.reason}</p>
+                              {swap.fromVehicleCondition && (
+                                <p className="text-muted-foreground italic">{swap.fromVehicleCondition}</p>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                        <div className="flex justify-between gap-3">
-                          <span>{t("res.outstandingAmount")}</span>
-                          <span className={`font-medium ${getReservationOutstandingAmount(selectedReservation) > 0 ? "text-amber-700" : "text-foreground"}`}>
-                            {formatMoney(getReservationOutstandingAmount(selectedReservation), currency)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-1 border-t pt-2">
-                        {getReservationPayments(selectedReservation).map((payment, index) => (
-                          <div key={`${payment.paidAt}-${index}`} className="flex justify-between gap-3 text-xs text-muted-foreground">
-                            <span>
-                              {t("res.paymentMethodCash")} · {formatDate(payment.paidAt.slice(0, 10))}
-                            </span>
-                            <span className="font-medium text-foreground">{formatMoney(payment.amount, currency)}</span>
+                      )}
+
+                      {selectedReservation.returnChecklist && (
+                        <div className="space-y-2 rounded-xl border border-border bg-background p-4">
+                          <p className="text-xs font-medium text-muted-foreground">{t("res.returnChecklistSection")}</p>
+                          <div className="rounded-lg border p-3 text-xs space-y-1.5">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">{t("res.returnedAt")}</span>
+                              <span>{formatDate(selectedReservation.returnChecklist.completedAt.slice(0, 10))}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">{t("res.returnedMileage")}</span>
+                              <span>{selectedReservation.returnChecklist.returnMileage.toLocaleString()} km</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">{t("res.fuelLevel")}</span>
+                              <span className="flex items-center gap-1">
+                                <Fuel className="h-3 w-3" />
+                                {t(`res.fuel${selectedReservation.returnChecklist.fuelLevel.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join("")}` as Parameters<typeof t>[0])}
+                              </span>
+                            </div>
+                            {selectedReservation.returnChecklist.hasDamage && (
+                              <div className="border-destructive/20 pt-1 border-t">
+                                <p className="text-destructive font-medium flex items-center gap-1">
+                                  <Wrench className="h-3 w-3" />
+                                  {t("res.damageDescription")}
+                                </p>
+                                {selectedReservation.returnChecklist.damageDescription && (
+                                  <p className="text-muted-foreground mt-0.5">{selectedReservation.returnChecklist.damageDescription}</p>
+                                )}
+                              </div>
+                            )}
+                            {!!selectedReservation.returnChecklist.extraCharges && selectedReservation.returnChecklist.extraCharges > 0 && (
+                              <div className="flex justify-between font-medium">
+                                <span className="text-muted-foreground">{t("res.extraCharges")}</span>
+                                <span className="text-destructive">+€{selectedReservation.returnChecklist.extraCharges}</span>
+                              </div>
+                            )}
+                            {selectedReservation.returnChecklist.notes && (
+                              <p className="text-muted-foreground italic pt-1">{selectedReservation.returnChecklist.notes}</p>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <Badge variant="outline" className="text-muted-foreground">
-                        {t("res.unpaid")}
-                      </Badge>
-                      <div className="flex justify-between gap-3 text-xs text-muted-foreground">
-                        <span>{t("res.outstandingAmount")}</span>
-                        <span className="font-medium text-foreground">{formatMoney(selectedReservation.totalCost, currency)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                          {hasReturnPhotos && selectedReservation.returnChecklist.returnPhotos && selectedReservation.returnChecklist.returnPhotos.length > 0 && (
+                            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {selectedReservation.returnChecklist.returnPhotos.map((url, i) => (
+                                <div key={url} className="relative aspect-video overflow-hidden rounded-md bg-muted">
+                                  <Image src={url} alt={`${t("res.returnPhotos")} ${i + 1}`} fill className="object-cover" unoptimized />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">{t("booking.contractLanguage")}</p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {tenantContractLanguages.map((contractLocale, index) => (
-                      <a
-                        key={contractLocale}
-                        href={`/api/reservations/${encodeURIComponent(selectedReservation.id)}/contract?lang=${contractLocale}`}
-                        className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors ${
-                          index === 0
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "border border-border bg-background hover:bg-muted"
-                        }`}
-                      >
-                        <FileText className="h-4 w-4" />
-                        {t("booking.downloadContract")} ({LOCALE_LABELS[contractLocale]})
-                      </a>
-                    ))}
-                  </div>
-                </div>
+                      {!selectedReservation.cancellationReason &&
+                        (!selectedReservation.extensions || selectedReservation.extensions.length === 0) &&
+                        (!selectedReservation.vehicleSwaps || selectedReservation.vehicleSwaps.length === 0) &&
+                        !selectedReservation.returnChecklist && (
+                          <div className="rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">
+                            {t("common.none")}
+                          </div>
+                        )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+
               </CardContent>
             </Card>
           ) : (

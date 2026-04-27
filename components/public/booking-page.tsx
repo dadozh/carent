@@ -34,6 +34,7 @@ import {
   parseEuropeanDate,
 } from "@/lib/date-format";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
+import { calculateExtraTotal, resolveExtraLabel, type ExtraEntry } from "@/lib/extra";
 import { resolveLocationLabel, type LocationEntry } from "@/lib/location";
 
 type Step = "search" | "select" | "details" | "confirm";
@@ -49,7 +50,7 @@ export function PublicBookingPage({
   tenantSlug: string;
   tenantName: string;
   locations: LocationEntry[];
-  availableExtras: string[];
+  availableExtras: ExtraEntry[];
 }) {
   const { t, locale } = useI18n();
   const [step, setStep] = useState<Step>("search");
@@ -94,10 +95,20 @@ export function PublicBookingPage({
           )
         )
       : 0;
-
-  const totalCost = selectedVehicle
-    ? calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
+  const vehicleDailyRate = selectedVehicle
+    ? effectiveDailyRate(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
     : 0;
+
+  const extrasTotal = calculateExtraTotal(extras, availableExtras, dayCount);
+  const extrasDailyTotal = dayCount > 0
+    ? Math.round((extrasTotal / dayCount) * 100) / 100
+    : 0;
+  const vehicleSubtotal = selectedVehicle
+    ? Math.round(vehicleDailyRate * dayCount * 100) / 100
+    : 0;
+  const totalCost = selectedVehicle
+    ? Math.round((calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate) + extrasTotal) * 100) / 100
+    : extrasTotal;
 
   useEffect(() => {
     if (!pickupDate || !returnDate) return;
@@ -227,12 +238,6 @@ export function PublicBookingPage({
     };
     return labels[value] ?? value;
   }
-
-  const extraLabels: Record<string, string> = {
-    GPS: t("booking.gps"),
-    "Wi-Fi": t("booking.wifi"),
-    "Child Seat": t("booking.childSeat"),
-  };
 
   const toggleExtra = (extra: string) => {
     setExtras((prev) =>
@@ -521,19 +526,20 @@ export function PublicBookingPage({
                   <h2 className="text-lg font-semibold mb-4">{t("booking.extras")}</h2>
                   <div className="grid gap-3 sm:grid-cols-3">
                     {availableExtras.map((extra) => {
-                      const Icon = extra === "GPS" ? Navigation : extra === "Wi-Fi" ? Wifi : Baby;
+                      const Icon = extra.key === "GPS" ? Navigation : extra.key === "Wi-Fi" ? Wifi : Baby;
                       return (
                       <button
-                        key={extra}
+                        key={extra.key}
                         type="button"
-                        onClick={() => toggleExtra(extra)}
+                        onClick={() => toggleExtra(extra.key)}
                         className={`flex items-center gap-3 rounded-lg border p-4 text-left transition-colors ${
-                          extras.includes(extra) ? "border-primary bg-primary/5" : "hover:bg-muted"
+                          extras.includes(extra.key) ? "border-primary bg-primary/5" : "hover:bg-muted"
                         }`}
                       >
                         <Icon className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm font-medium flex-1">{extraLabels[extra] ?? extra}</span>
-                        {extras.includes(extra) && <Check className="h-4 w-4 text-primary" />}
+                        <span className="text-sm font-medium flex-1">{resolveExtraLabel(extra.key, locale, availableExtras)}</span>
+                        <span className="text-xs text-muted-foreground">{formatMoney(extra.price, currency)}</span>
+                        {extras.includes(extra.key) && <Check className="h-4 w-4 text-primary" />}
                       </button>
                     )})}
                   </div>
@@ -552,16 +558,40 @@ export function PublicBookingPage({
                   )}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span className="text-muted-foreground">{t("res.vehicle")}</span><span className="font-medium">{selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : "-"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.pickup")}</span><span className="font-medium">{formatDate(pickupDate)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.return")}</span><span className="font-medium">{formatDate(returnDate)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.rentalPeriod")}</span><span className="font-medium text-right">{formatDateRange(pickupDate, returnDate)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.duration")}</span><span className="font-medium">{dayCount} {t("common.days")}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.pickup")}</span><span className="font-medium">{getLocationLabel(location === "all" ? selectedVehicle?.location ?? "" : location)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.return")}</span><span className="font-medium">{getLocationLabel(location === "all" ? selectedVehicle?.location ?? "" : location)}</span></div>
                     {extras.length > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">{t("booking.extras")}</span>
-                        <span className="font-medium">{extras.map((extra) => extraLabels[extra] ?? extra).join(", ")}</span>
+                        <span className="font-medium">{extras.map((extra) => resolveExtraLabel(extra, locale, availableExtras)).join(", ")}</span>
                       </div>
                     )}
-                    <Separator />
+                  </div>
+                  <Separator />
+                  <div className="space-y-3 text-sm">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("booking.priceBreakdown")}</div>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="font-medium">{t("booking.vehicleRental")}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatMoneyCompact(vehicleDailyRate, currency)}{t("common.perDay")} × {dayCount} {dayCount === 1 ? t("common.day") : t("common.days")}
+                        </div>
+                      </div>
+                      <span className="font-medium">{formatMoney(vehicleSubtotal, currency)}</span>
+                    </div>
+                    {extrasTotal > 0 && (
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="font-medium">{t("booking.extrasDaily")}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatMoneyCompact(extrasDailyTotal, currency)}{t("common.perDay")} × {dayCount} {dayCount === 1 ? t("common.day") : t("common.days")}
+                          </div>
+                        </div>
+                        <span className="font-medium">{formatMoney(extrasTotal, currency)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-base font-bold"><span>{t("common.total")}</span><span className="text-primary">{formatMoney(totalCost, currency)}</span></div>
                   </div>
                   <Button className="mt-4 w-full" onClick={submitBooking} disabled={submittingBooking}>
@@ -587,8 +617,11 @@ export function PublicBookingPage({
                 <div className="flex justify-between"><span className="text-muted-foreground">{t("public.bookingRef")}</span><span className="font-mono font-bold">{bookingRef}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">{t("res.vehicle")}</span><span className="font-medium">{selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : "-"}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">{t("res.customer")}</span><span className="font-medium">{customerDetails.firstName} {customerDetails.lastName}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.pickup")}</span><span className="font-medium">{formatDate(pickupDate)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.return")}</span><span className="font-medium">{formatDate(returnDate)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.rentalPeriod")}</span><span className="font-medium text-right">{formatDateRange(pickupDate, returnDate)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.duration")}</span><span className="font-medium">{dayCount} {dayCount === 1 ? t("common.day") : t("common.days")}</span></div>
+                <div className="pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("booking.priceBreakdown")}</div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.vehicleRental")}</span><span className="font-medium">{formatMoney(vehicleSubtotal, currency)}</span></div>
+                {extrasTotal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("booking.extrasDaily")}</span><span className="font-medium">{formatMoney(extrasTotal, currency)}</span></div>}
                 <Separator />
                 <div className="flex justify-between font-bold"><span>{t("common.total")}</span><span className="text-primary">{formatMoney(totalCost, currency)}</span></div>
               </CardContent>

@@ -70,6 +70,7 @@ export async function GET(
       tenant,
       locale,
       locations: settings.locations,
+      extras: settings.extras,
       currency: settings.currency,
       template: template.published ?? template.draft,
     });

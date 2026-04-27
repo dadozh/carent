@@ -6,6 +6,7 @@ import {
   type ContractTemplateDocument,
 } from "@/lib/contract-template-content";
 import { formatDate, formatDateTimeRange } from "@/lib/date-format";
+import { resolveExtraLabel, type ExtraEntry } from "@/lib/extra";
 import type { Locale } from "@/lib/i18n-config";
 import { resolveLocationLabel, type LocationEntry } from "@/lib/location";
 import type { Customer, Reservation, Vehicle } from "@/lib/mock-data";
@@ -17,6 +18,7 @@ interface ContractPdfInput {
   tenant: Pick<Tenant, "name">;
   locale: Locale;
   locations: LocationEntry[];
+  extras: ExtraEntry[];
   currency: string;
   template: ContractTemplateDocument;
 }
@@ -41,19 +43,6 @@ const statusLabels: Record<ContractLocale, Record<Reservation["status"], string>
     active: "Aktivno",
     completed: "Završeno",
     cancelled: "Otkazano",
-  },
-};
-
-const extraLabels: Record<ContractLocale, Record<string, string>> = {
-  en: {
-    GPS: "GPS",
-    "Wi-Fi": "Wi-Fi",
-    "Child Seat": "Child seat",
-  },
-  sr: {
-    GPS: "GPS",
-    "Wi-Fi": "Wi-Fi",
-    "Child Seat": "Dečje sedište",
   },
 };
 
@@ -159,6 +148,7 @@ function buildTemplateValues({
   tenant,
   locale,
   locations,
+  extras,
   currency,
 }: Omit<ContractPdfInput, "template">): Record<string, string> {
   const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}${vehicle.trim ? ` ${vehicle.trim}` : ""}`;
@@ -192,7 +182,7 @@ function buildTemplateValues({
     "{{reservation.dailyRate}}": formatMoney(reservation.dailyRate, currency),
     "{{reservation.totalCost}}": formatMoney(reservation.totalCost, currency),
     "{{reservation.extras}}": reservation.extras.length
-      ? reservation.extras.map((extra) => translate(locale, extraLabels, extra)).join(", ")
+      ? reservation.extras.map((extra) => resolveExtraLabel(extra, locale, extras)).join(", ")
       : (locale === "sr" ? "Nema" : "None"),
     "{{reservation.notes}}": reservation.notes || "-",
   };

@@ -4,6 +4,7 @@ import { stringifyAuditDetail } from "@/lib/audit-detail";
 import { logAction } from "@/lib/audit-db";
 import { getAuditRequestContext } from "@/lib/audit-request";
 import { getTenantSettings, updateTenantSettings } from "@/lib/auth-db";
+import { normalizeExtraEntries } from "@/lib/extra";
 import { isLocale, type Locale } from "@/lib/i18n-config";
 import { type TranslationKey } from "@/lib/i18n";
 import { normalizeLocationEntries } from "@/lib/location";
@@ -23,18 +24,21 @@ function isTranslationKey(value: string): value is TranslationKey {
   return value.startsWith("settings.");
 }
 
-function parseList(value: string) {
-  return value
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function parseLocations(value: FormDataEntryValue | null) {
   if (typeof value !== "string") return [];
 
   try {
     return normalizeLocationEntries(JSON.parse(value));
+  } catch {
+    throw new Error("settings.tenant.updateError");
+  }
+}
+
+function parseExtras(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") return [];
+
+  try {
+    return normalizeExtraEntries(JSON.parse(value));
   } catch {
     throw new Error("settings.tenant.updateError");
   }
@@ -68,7 +72,7 @@ export async function updateTenantSettingsAction(
     const previousSettings = await getTenantSettings(session.tenantId);
     const nextSettings = {
       locations: parseLocations(formData.get("locations")),
-      extras: parseList(`${formData.get("extras") ?? ""}`),
+      extras: parseExtras(formData.get("extras")),
       currency: (["EUR", "USD", "RSD", "BAM"] as const).includes(
         formData.get("currency") as "EUR"
       ) ? `${formData.get("currency")}` : "EUR",
@@ -109,8 +113,8 @@ export async function updateTenantSettingsAction(
           },
           {
             field: "extras",
-            oldValue: previousSettings.extras.join(", ") || null,
-            newValue: nextSettings.extras.join(", ") || null,
+            oldValue: previousSettings.extras.map((extra) => extra.key).join(", ") || null,
+            newValue: nextSettings.extras.map((extra) => extra.key).join(", ") || null,
           },
           {
             field: "uiLanguages",
