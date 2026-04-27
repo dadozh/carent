@@ -30,5 +30,12 @@
       "tag": "0003_tenant_currency",
       "breakpoints": true
     }
+    ,{
+      "idx": 4,
+      "version": "7",
+      "when": 1745680000000,
+      "tag": "0004_tenant_languages",
+      "breakpoints": true
+    }
   ]
 }

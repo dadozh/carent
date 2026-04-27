@@ -57,7 +57,7 @@ import {
   Wrench,
   AlertCircle,
 } from "lucide-react";
-import { useI18n } from "@/lib/i18n";
+import { LOCALE_LABELS, useI18n } from "@/lib/i18n";
 import { useVehicles } from "@/lib/use-vehicles";
 import { useReservations } from "@/lib/use-reservations";
 import { useTenantSettings } from "@/lib/use-tenant-settings";
@@ -135,6 +135,7 @@ export default function ReservationsPage() {
   const { vehicles } = useVehicles();
   const { settings: tenantSettings } = useTenantSettings();
   const currency = useCurrency();
+  const tenantContractLanguages = tenantSettings.contractLanguages;
   const {
     customers,
     addCustomer,
@@ -2090,21 +2091,21 @@ export default function ReservationsPage() {
 
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">{t("booking.contractLanguage")}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <a
-                      href={`/api/reservations/${encodeURIComponent(selectedReservation.id)}/contract?lang=sr`}
-                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    >
-                      <FileText className="h-4 w-4" />
-                      {t("booking.downloadContractSr")}
-                    </a>
-                    <a
-                      href={`/api/reservations/${encodeURIComponent(selectedReservation.id)}/contract?lang=en`}
-                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted"
-                    >
-                      <FileText className="h-4 w-4" />
-                      {t("booking.downloadContractEn")}
-                    </a>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {tenantContractLanguages.map((contractLocale, index) => (
+                      <a
+                        key={contractLocale}
+                        href={`/api/reservations/${encodeURIComponent(selectedReservation.id)}/contract?lang=${contractLocale}`}
+                        className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors ${
+                          index === 0
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                            : "border border-border bg-background hover:bg-muted"
+                        }`}
+                      >
+                        <FileText className="h-4 w-4" />
+                        {t("booking.downloadContract")} ({LOCALE_LABELS[contractLocale]})
+                      </a>
+                    ))}
                   </div>
                 </div>
               </CardContent>

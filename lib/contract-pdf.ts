@@ -2,7 +2,7 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import type { Customer, Reservation, Vehicle } from "@/lib/mock-data";
 import { formatDate, formatDateTimeRange } from "@/lib/date-format";
-import type { Locale } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n-config";
 
 interface ContractPdfInput {
   reservation: Reservation;
@@ -48,12 +48,18 @@ type ContractLabelSet = {
   dateTime: string;
 };
 
+type ContractLocale = "en" | "sr";
+
 const REGULAR_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 const BOLD_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 const PAGE_MARGIN = 42;
 const COLUMN_GAP = 24;
 
-const labels: Record<Locale, ContractLabelSet> = {
+function contractLocale(locale: Locale): ContractLocale {
+  return locale === "sr" ? "sr" : "en";
+}
+
+const labels: Record<ContractLocale, ContractLabelSet> = {
   en: {
     title: "Vehicle Rental Agreement",
     agreementNumber: "Agreement number",
@@ -126,7 +132,7 @@ const labels: Record<Locale, ContractLabelSet> = {
   },
 };
 
-const statusLabels: Record<Locale, Record<Reservation["status"], string>> = {
+const statusLabels: Record<ContractLocale, Record<Reservation["status"], string>> = {
   en: {
     pending: "Pending",
     confirmed: "Confirmed",
@@ -143,7 +149,7 @@ const statusLabels: Record<Locale, Record<Reservation["status"], string>> = {
   },
 };
 
-const locationLabels: Record<Locale, Record<string, string>> = {
+const locationLabels: Record<ContractLocale, Record<string, string>> = {
   en: {
     Airport: "Airport",
     Downtown: "Downtown",
@@ -158,7 +164,7 @@ const locationLabels: Record<Locale, Record<string, string>> = {
   },
 };
 
-const extraLabels: Record<Locale, Record<string, string>> = {
+const extraLabels: Record<ContractLocale, Record<string, string>> = {
   en: {
     GPS: "GPS",
     "Wi-Fi": "Wi-Fi",
@@ -171,7 +177,7 @@ const extraLabels: Record<Locale, Record<string, string>> = {
   },
 };
 
-const fuelLabels: Record<Locale, Record<string, string>> = {
+const fuelLabels: Record<ContractLocale, Record<string, string>> = {
   en: {},
   sr: {
     Gasoline: "Benzin",
@@ -182,7 +188,7 @@ const fuelLabels: Record<Locale, Record<string, string>> = {
   },
 };
 
-const transmissionLabels: Record<Locale, Record<string, string>> = {
+const transmissionLabels: Record<ContractLocale, Record<string, string>> = {
   en: {},
   sr: {
     Manual: "Manuelni",
@@ -192,7 +198,7 @@ const transmissionLabels: Record<Locale, Record<string, string>> = {
   },
 };
 
-const colorLabels: Record<Locale, Record<string, string>> = {
+const colorLabels: Record<ContractLocale, Record<string, string>> = {
   en: {},
   sr: {
     Black: "Crna",
@@ -209,7 +215,7 @@ const colorLabels: Record<Locale, Record<string, string>> = {
   },
 };
 
-const terms: Record<Locale, string[]> = {
+const terms: Record<ContractLocale, string[]> = {
   en: [
     "1. The renter must hold a valid driver license for the entire rental period and must present it on request.",
     "2. Only authorized drivers may operate the vehicle. The renter remains responsible for use by any unauthorized driver.",
@@ -234,8 +240,8 @@ const terms: Record<Locale, string[]> = {
   ],
 };
 
-function translate(locale: Locale, table: Record<Locale, Record<string, string>>, value: string) {
-  return table[locale][value] ?? value;
+function translate(locale: Locale, table: Record<ContractLocale, Record<string, string>>, value: string) {
+  return table[contractLocale(locale)][value] ?? value;
 }
 
 function formatMoney(value: number, currency: string) {
@@ -373,7 +379,8 @@ export async function generateReservationContractPdf({
   locale,
   currency,
 }: ContractPdfInput) {
-  const t = labels[locale];
+  const pdfLocale = contractLocale(locale);
+  const t = labels[pdfLocale];
   const rentalPeriod = formatDateTimeRange(
     reservation.startDate,
     reservation.pickupTime,
@@ -392,7 +399,7 @@ export async function generateReservationContractPdf({
     doc.font(fonts.regular).fontSize(9);
     doc.text(`${t.agreementNumber}: ${getReservationContractNumber(reservation.id)}`);
     doc.text(`${t.created}: ${formatDate(reservation.createdAt)}`);
-    doc.text(`${t.status}: ${statusLabels[locale][reservation.status]}`);
+    doc.text(`${t.status}: ${statusLabels[pdfLocale][reservation.status]}`);
 
     doc.moveDown(1);
     const startY = doc.y;
@@ -458,7 +465,7 @@ export async function generateReservationContractPdf({
 
     renderHeading(doc, fonts, t.termsTitle, 10);
     doc.font(fonts.regular).fontSize(7.3);
-    for (const term of terms[locale]) {
+    for (const term of terms[pdfLocale]) {
       ensureSpace(doc, 24);
       doc.text(term, {
         width,

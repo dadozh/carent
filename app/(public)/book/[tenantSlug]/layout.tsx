@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { Car, Globe } from "lucide-react";
-import { getTenantBySlug } from "@/lib/auth-db";
+import { Car } from "lucide-react";
+import { TenantLocaleScope } from "@/components/layout/tenant-locale-scope";
+import { PublicLanguageSwitcher } from "@/components/layout/public-language-switcher";
+import { getTenantBySlug, getTenantSettings } from "@/lib/auth-db";
 
 export default async function TenantPublicLayout({
   children,
@@ -11,9 +13,13 @@ export default async function TenantPublicLayout({
 }) {
   const { tenantSlug } = await params;
   const tenant = await getTenantBySlug(tenantSlug);
+  const settings = tenant ? await getTenantSettings(tenant.id) : null;
 
   return (
     <div className="min-h-screen flex flex-col">
+      {settings ? (
+        <TenantLocaleScope uiLocales={settings.uiLanguages} defaultUiLocale={settings.defaultUiLanguage} />
+      ) : null}
       <header className="border-b bg-white">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <Link href={`/book/${tenantSlug}`} className="flex items-center gap-2">
@@ -21,10 +27,7 @@ export default async function TenantPublicLayout({
             <span className="text-xl font-bold tracking-tight">{tenant?.name ?? "CARENT"}</span>
           </Link>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
-              <Globe className="h-3.5 w-3.5" />
-              {tenantSlug}
-            </div>
+            <PublicLanguageSwitcher />
             <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Admin
             </Link>

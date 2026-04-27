@@ -8,8 +8,27 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  ALL_LOCALES,
+  DEFAULT_UI_LOCALE,
+  DEFAULT_UI_LOCALES,
+  LOCALE_COOKIE_KEY,
+  LOCALE_LABELS,
+  getInitialLocale,
+  isLocale,
+  normalizeDefaultLocale,
+  normalizeLocaleSelection,
+  type Locale,
+} from "@/lib/i18n-config";
 
-export type Locale = "en" | "sr";
+export {
+  ALL_LOCALES,
+  LOCALE_COOKIE_KEY,
+  LOCALE_LABELS,
+  getInitialLocale,
+  isLocale,
+  type Locale,
+};
 
 const translations = {
   en: {
@@ -52,18 +71,59 @@ const translations = {
 
     // Settings
     "settings.tenant.title": "Tenant settings",
-    "settings.tenant.description": "Configure booking locations and extras for your tenant.",
-    "settings.tenant.cardTitle": "Booking configuration",
+    "settings.tenant.description": "Manage tenant branding, localization, booking options, pricing tools, and fleet catalog settings.",
+    "settings.tenant.brandingDescription": "Upload the logo shown across tenant-facing screens.",
+    "settings.tenant.localizationTitle": "Localization",
+    "settings.tenant.localizationDescription": "Set tenant-wide currency, staff UI languages, and contract PDF languages.",
+    "settings.tenant.currency": "Currency",
+    "settings.tenant.currencyHelp": "Used for all price displays across the tenant.",
+    "settings.tenant.bookingTitle": "Booking options",
+    "settings.tenant.bookingDescription": "Configure selectable locations and extras used in staff and public booking flows.",
+    "settings.tenant.cardTitle": "Booking options",
     "settings.tenant.locations": "Booking locations",
     "settings.tenant.locationsHelp": "One location per line. These appear in staff and public booking flows.",
     "settings.tenant.extras": "Booking extras",
     "settings.tenant.extrasHelp": "One extra per line. Leave blank if you do not offer extras.",
     "settings.tenant.vehicleCatalogDescription": "Manage tenant-specific makes and models used when adding vehicles.",
     "settings.tenant.manageVehicleCatalog": "Manage catalog",
+    "settings.tenant.pricingTemplatesDescription": "Define tiered pricing by rental duration and assign templates to vehicles.",
     "settings.tenant.save": "Save settings",
     "settings.tenant.saving": "Saving settings...",
     "settings.tenant.success": "Tenant settings updated.",
     "settings.tenant.updateError": "Unable to update tenant settings",
+    "settings.tenant.contractLanguages": "Contract languages",
+    "settings.tenant.contractLanguagesHelp": "Choose which languages are available for generated rental contract PDFs.",
+    "settings.tenant.uiLanguages": "UI languages",
+    "settings.tenant.uiLanguagesHelp": "Choose which languages appear in the tenant language switcher.",
+    "settings.tenant.defaultLanguage": "Default language",
+    "settings.tenant.languageSelectionError": "Select at least one language and make sure the default is included.",
+    "settings.pricing.title": "Pricing templates",
+    "settings.pricing.description": "Define reusable tiered pricing to assign to vehicles.",
+    "settings.pricing.manage": "Manage pricing",
+    "settings.pricing.templates": "Templates",
+    "settings.pricing.newTemplate": "New template",
+    "settings.pricing.editTemplate": "Edit template",
+    "settings.pricing.noTemplates": "No templates yet.",
+    "settings.pricing.name": "Name",
+    "settings.pricing.namePlaceholder": "e.g. Standard, Weekend, Long-term",
+    "settings.pricing.tier": "tier",
+    "settings.pricing.tiers": "tiers",
+    "settings.pricing.delete": "Delete",
+    "settings.pricing.noTiers": "No tiers yet. Add one below.",
+    "settings.pricing.noTiersDefined": "No tiers defined.",
+    "settings.pricing.addTier": "Add tier",
+    "settings.pricing.removeTier": "Remove tier",
+    "settings.pricing.upTo": "Up to",
+    "settings.pricing.upToDays": "Up to {days} days",
+    "settings.pricing.aboveAll": "Above all",
+    "settings.pricing.days": "days",
+    "settings.pricing.daysRateSeparator": "days ->",
+    "settings.pricing.perDaySuffix": "/day",
+    "settings.pricing.openEndedTip": "Tip: leave the last tier's days empty to create an open-ended and-above tier.",
+    "settings.pricing.confirmDelete": "Delete this pricing template? Vehicles using it will fall back to their flat rate.",
+    "settings.pricing.errorNameRequired": "Name is required",
+    "settings.pricing.errorSave": "Failed to save",
+    "settings.pricing.errorDelete": "Failed to delete",
 
     "settings.users.title": "User management",
     "settings.users.description": "Manage staff access inside your tenant. Password changes stay self-service in the profile page.",
@@ -211,6 +271,10 @@ const translations = {
     "audit.field.status": "Status",
     "audit.field.locations": "Locations",
     "audit.field.extras": "Extras",
+    "audit.field.contractLanguages": "Contract languages",
+    "audit.field.defaultContractLanguage": "Default contract language",
+    "audit.field.uiLanguages": "UI languages",
+    "audit.field.defaultUiLanguage": "Default UI language",
     "audit.field.role": "Role",
     "audit.meta.vehiclePlate": "Plate",
     "audit.meta.period": "Period",
@@ -226,6 +290,8 @@ const translations = {
     "audit.meta.status": "Status",
     "audit.meta.locationsCount": "Locations",
     "audit.meta.extrasCount": "Extras",
+    "audit.meta.contractLanguages": "Contract languages",
+    "audit.meta.uiLanguages": "UI languages",
     "audit.meta.email": "Email",
     "audit.meta.role": "Role",
     "audit.meta.plan": "Plan",
@@ -657,18 +723,59 @@ const translations = {
 
     // Settings
     "settings.tenant.title": "Podešavanja zakupca",
-    "settings.tenant.description": "Podesite lokacije za preuzimanje i dodatke za vašeg zakupca.",
-    "settings.tenant.cardTitle": "Podešavanje rezervacija",
+    "settings.tenant.description": "Upravljajte brendiranjem, lokalizacijom, opcijama rezervacije, cenovnicima i katalogom vozila.",
+    "settings.tenant.brandingDescription": "Otpremite logo koji se prikazuje na ekranima zakupca.",
+    "settings.tenant.localizationTitle": "Lokalizacija",
+    "settings.tenant.localizationDescription": "Podesite valutu zakupca, jezike interfejsa za zaposlene i jezike PDF ugovora.",
+    "settings.tenant.currency": "Valuta",
+    "settings.tenant.currencyHelp": "Koristi se za sve prikaze cena u okviru zakupca.",
+    "settings.tenant.bookingTitle": "Opcije rezervacije",
+    "settings.tenant.bookingDescription": "Podesite lokacije i dodatke koji se koriste u internom i javnom toku rezervacije.",
+    "settings.tenant.cardTitle": "Opcije rezervacije",
     "settings.tenant.locations": "Lokacije za rezervaciju",
     "settings.tenant.locationsHelp": "Jedna lokacija po redu. Prikazuju se u internom i javnom toku rezervacije.",
     "settings.tenant.extras": "Dodaci za rezervaciju",
     "settings.tenant.extrasHelp": "Jedan dodatak po redu. Ostavite prazno ako ne nudite dodatke.",
     "settings.tenant.vehicleCatalogDescription": "Upravljajte markama i modelima specifičnim za zakupca koji se koriste pri dodavanju vozila.",
     "settings.tenant.manageVehicleCatalog": "Upravljaj katalogom",
+    "settings.tenant.pricingTemplatesDescription": "Definišite stepenaste cene po trajanju najma i dodelite šablone vozilima.",
     "settings.tenant.save": "Sačuvaj podešavanja",
     "settings.tenant.saving": "Čuvanje podešavanja...",
     "settings.tenant.success": "Podešavanja zakupca su ažurirana.",
     "settings.tenant.updateError": "Nije moguće ažurirati podešavanja zakupca",
+    "settings.tenant.contractLanguages": "Jezici ugovora",
+    "settings.tenant.contractLanguagesHelp": "Izaberite jezike dostupne za PDF ugovore o najmu.",
+    "settings.tenant.uiLanguages": "Jezici interfejsa",
+    "settings.tenant.uiLanguagesHelp": "Izaberite jezike koji se prikazuju u meniju za promenu jezika.",
+    "settings.tenant.defaultLanguage": "Podrazumevani jezik",
+    "settings.tenant.languageSelectionError": "Izaberite bar jedan jezik i proverite da je podrazumevani jezik uključen.",
+    "settings.pricing.title": "Šabloni cena",
+    "settings.pricing.description": "Definišite šablone stepenastih cena koje možete dodeliti vozilima.",
+    "settings.pricing.manage": "Upravljaj cenama",
+    "settings.pricing.templates": "Šabloni",
+    "settings.pricing.newTemplate": "Novi šablon",
+    "settings.pricing.editTemplate": "Izmeni šablon",
+    "settings.pricing.noTemplates": "Još nema šablona.",
+    "settings.pricing.name": "Naziv",
+    "settings.pricing.namePlaceholder": "npr. Standard, Vikend, Dugoročno",
+    "settings.pricing.tier": "nivo",
+    "settings.pricing.tiers": "nivoa",
+    "settings.pricing.delete": "Obriši",
+    "settings.pricing.noTiers": "Još nema nivoa. Dodajte jedan ispod.",
+    "settings.pricing.noTiersDefined": "Nivoi nisu definisani.",
+    "settings.pricing.addTier": "Dodaj nivo",
+    "settings.pricing.removeTier": "Ukloni nivo",
+    "settings.pricing.upTo": "Do",
+    "settings.pricing.upToDays": "Do {days} dana",
+    "settings.pricing.aboveAll": "Iznad svih",
+    "settings.pricing.days": "dana",
+    "settings.pricing.daysRateSeparator": "dana ->",
+    "settings.pricing.perDaySuffix": "/dan",
+    "settings.pricing.openEndedTip": "Savet: ostavite broj dana na poslednjem nivou prazan da biste napravili otvoreni nivo za sve iznad.",
+    "settings.pricing.confirmDelete": "Obrisati ovaj šablon cena? Vozila koja ga koriste vratiće se na svoju fiksnu cenu.",
+    "settings.pricing.errorNameRequired": "Naziv je obavezan",
+    "settings.pricing.errorSave": "Čuvanje nije uspelo",
+    "settings.pricing.errorDelete": "Brisanje nije uspelo",
 
     "settings.users.title": "Upravljanje korisnicima",
     "settings.users.description": "Upravljajte pristupom osoblja unutar vašeg zakupca. Promena lozinke ostaje samostalna na stranici profila.",
@@ -816,6 +923,10 @@ const translations = {
     "audit.field.status": "Status",
     "audit.field.locations": "Lokacije",
     "audit.field.extras": "Dodaci",
+    "audit.field.contractLanguages": "Jezici ugovora",
+    "audit.field.defaultContractLanguage": "Podrazumevani jezik ugovora",
+    "audit.field.uiLanguages": "Jezici interfejsa",
+    "audit.field.defaultUiLanguage": "Podrazumevani jezik interfejsa",
     "audit.field.role": "Uloga",
     "audit.meta.vehiclePlate": "Tablice",
     "audit.meta.period": "Period",
@@ -831,6 +942,8 @@ const translations = {
     "audit.meta.status": "Status",
     "audit.meta.locationsCount": "Broj lokacija",
     "audit.meta.extrasCount": "Broj dodataka",
+    "audit.meta.contractLanguages": "Jezici ugovora",
+    "audit.meta.uiLanguages": "Jezici interfejsa",
     "audit.meta.email": "Email",
     "audit.meta.role": "Uloga",
     "audit.meta.plan": "Paket",
@@ -1227,39 +1340,49 @@ const translations = {
 export type TranslationKey = keyof typeof translations.en;
 
 const LOCALE_STORAGE_KEY = "carent.locale";
-export const LOCALE_COOKIE_KEY = "carent.locale";
 const LOCALE_CHANGE_EVENT = "carent-locale-change";
 
-function isLocale(value: string | null): value is Locale {
-  return value === "en" || value === "sr";
-}
+const translationMaps: Record<Locale, Record<TranslationKey, string>> = {
+  de: translations.en,
+  en: translations.en,
+  sr: translations.sr,
+  bs: translations.en,
+  hr: translations.en,
+};
 
-function readBrowserLocale(fallbackLocale: Locale): Locale {
+function readBrowserLocale(
+  fallbackLocale: Locale,
+  allowedLocales: readonly Locale[],
+  defaultLocale: Locale
+): Locale {
   if (typeof window === "undefined") return fallbackLocale;
 
   try {
     const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (isLocale(storedLocale)) return storedLocale;
+    if (isLocale(storedLocale) && allowedLocales.includes(storedLocale)) return storedLocale;
 
     const cookieLocale = window.document.cookie
       .split("; ")
       .find((entry) => entry.startsWith(`${LOCALE_COOKIE_KEY}=`))
       ?.split("=")[1] ?? null;
 
-    if (isLocale(cookieLocale)) return cookieLocale;
+    if (isLocale(cookieLocale) && allowedLocales.includes(cookieLocale)) return cookieLocale;
 
     const documentLocale = window.document.documentElement.lang;
-    if (isLocale(documentLocale)) return documentLocale;
+    if (isLocale(documentLocale) && allowedLocales.includes(documentLocale)) return documentLocale;
 
-    return fallbackLocale;
+    return getInitialLocale(fallbackLocale, allowedLocales, defaultLocale);
   } catch {
-    return fallbackLocale;
+    return getInitialLocale(fallbackLocale, allowedLocales, defaultLocale);
   }
 }
 
 interface I18nContextType {
   locale: Locale;
+  uiLocales: Locale[];
+  defaultUiLocale: Locale;
   setLocale: (locale: Locale) => void;
+  setLocaleOptions: (options: { uiLocales: readonly Locale[]; defaultUiLocale: Locale }) => void;
   t: (key: TranslationKey) => string;
 }
 
@@ -1267,16 +1390,28 @@ const I18nContext = createContext<I18nContextType | null>(null);
 
 export function I18nProvider({
   children,
-  initialLocale = "en",
+  initialLocale = DEFAULT_UI_LOCALE,
+  uiLocales = DEFAULT_UI_LOCALES,
+  defaultUiLocale = DEFAULT_UI_LOCALE,
 }: {
   children: ReactNode;
   initialLocale?: Locale;
+  uiLocales?: readonly Locale[];
+  defaultUiLocale?: Locale;
 }) {
-  const [locale, setLocaleState] = useState<Locale>(initialLocale);
+  const [allowedLocales, setAllowedLocales] = useState<Locale[]>(() =>
+    normalizeLocaleSelection(uiLocales, DEFAULT_UI_LOCALES)
+  );
+  const [fallbackLocale, setFallbackLocale] = useState<Locale>(() =>
+    normalizeDefaultLocale(defaultUiLocale, normalizeLocaleSelection(uiLocales, DEFAULT_UI_LOCALES), DEFAULT_UI_LOCALE)
+  );
+  const [locale, setLocaleState] = useState<Locale>(() =>
+    getInitialLocale(initialLocale, allowedLocales, fallbackLocale)
+  );
 
   useEffect(() => {
     const handleLocaleChange = () => {
-      setLocaleState((currentLocale) => readBrowserLocale(currentLocale));
+      setLocaleState((currentLocale) => readBrowserLocale(currentLocale, allowedLocales, fallbackLocale));
     };
 
     handleLocaleChange();
@@ -1287,7 +1422,7 @@ export function I18nProvider({
       window.removeEventListener("storage", handleLocaleChange);
       window.removeEventListener(LOCALE_CHANGE_EVENT, handleLocaleChange);
     };
-  }, []);
+  }, [allowedLocales, fallbackLocale]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -1307,28 +1442,37 @@ export function I18nProvider({
   }, [locale]);
 
   const setLocale = useCallback((nextLocale: Locale) => {
-    setLocaleState(nextLocale);
-    document.documentElement.lang = nextLocale;
+    const selectedLocale = getInitialLocale(nextLocale, allowedLocales, fallbackLocale);
+    setLocaleState(selectedLocale);
+    document.documentElement.lang = selectedLocale;
 
     try {
-      window.localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale);
-      window.document.cookie = `${LOCALE_COOKIE_KEY}=${nextLocale}; path=/; max-age=31536000; samesite=lax`;
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, selectedLocale);
+      window.document.cookie = `${LOCALE_COOKIE_KEY}=${selectedLocale}; path=/; max-age=31536000; samesite=lax`;
     } catch {
       // Locale switching should still work when storage is unavailable.
     }
 
     window.dispatchEvent(new Event(LOCALE_CHANGE_EVENT));
+  }, [allowedLocales, fallbackLocale]);
+
+  const setLocaleOptions = useCallback((options: { uiLocales: readonly Locale[]; defaultUiLocale: Locale }) => {
+    const nextAllowedLocales = normalizeLocaleSelection(options.uiLocales, DEFAULT_UI_LOCALES);
+    const nextDefaultLocale = normalizeDefaultLocale(options.defaultUiLocale, nextAllowedLocales, DEFAULT_UI_LOCALE);
+    setAllowedLocales(nextAllowedLocales);
+    setFallbackLocale(nextDefaultLocale);
+    setLocaleState((currentLocale) => getInitialLocale(currentLocale, nextAllowedLocales, nextDefaultLocale));
   }, []);
 
   const t = useCallback(
     (key: TranslationKey) => {
-      return translations[locale][key] || translations.en[key] || key;
+      return translationMaps[locale][key] || translations.en[key] || key;
     },
     [locale]
   );
 
   return (
-    <I18nContext.Provider value={{ locale, setLocale, t }}>
+    <I18nContext.Provider value={{ locale, uiLocales: allowedLocales, defaultUiLocale: fallbackLocale, setLocale, setLocaleOptions, t }}>
       {children}
     </I18nContext.Provider>
   );

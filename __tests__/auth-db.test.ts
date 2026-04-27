@@ -144,6 +144,10 @@ describeIfDb("auth-db — tenant user management", () => {
       locations: ["Airport", "Downtown"],
       extras: ["GPS", "Wi-Fi", "Child Seat"],
       currency: "EUR",
+      contractLanguages: ["en", "sr"],
+      uiLanguages: ["en", "sr"],
+      defaultContractLanguage: "en",
+      defaultUiLanguage: "en",
     });
   });
 
@@ -155,12 +159,20 @@ describeIfDb("auth-db — tenant user management", () => {
       locations: ["Airport", " Downtown ", "Airport", ""],
       extras: ["GPS", "Baby Seat", "GPS"],
       currency: "EUR",
+      contractLanguages: ["de", "en"],
+      uiLanguages: ["en", "sr", "bs"],
+      defaultContractLanguage: "de",
+      defaultUiLanguage: "sr",
     });
 
     expect(await getTenantSettings(tenant.id)).toEqual({
       locations: ["Airport", "Downtown"],
       extras: ["GPS", "Baby Seat"],
       currency: "EUR",
+      contractLanguages: ["de", "en"],
+      uiLanguages: ["en", "sr", "bs"],
+      defaultContractLanguage: "de",
+      defaultUiLanguage: "sr",
     });
   });
 

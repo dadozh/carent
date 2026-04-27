@@ -1,5 +1,5 @@
 import { generateReservationContractPdf, getReservationContractNumber } from "@/lib/contract-pdf";
-import type { Locale } from "@/lib/i18n";
+import { resolveContractLocale } from "@/lib/i18n-config";
 import { getCustomerById, getReservationById } from "@/lib/rental-db";
 import { getVehicleById } from "@/lib/vehicle-db";
 import { getTenantSettings } from "@/lib/auth-db";
@@ -18,21 +18,21 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const requestedLocale = searchParams.get("lang");
-    const locale: Locale = requestedLocale === "sr" ? "sr" : "en";
     const reservation = await getReservationById(id, tenantId);
 
     if (!reservation) return Response.json({ error: "Reservation not found" }, { status: 404 });
 
-    const [customer, vehicle, { currency }] = await Promise.all([
+    const [customer, vehicle, settings] = await Promise.all([
       getCustomerById(reservation.customerId, tenantId),
       getVehicleById(reservation.vehicleId, tenantId),
       getTenantSettings(tenantId),
     ]);
+    const locale = resolveContractLocale(requestedLocale, settings.contractLanguages, settings.defaultContractLanguage);
 
     if (!customer) return Response.json({ error: "Reservation customer not found" }, { status: 404 });
     if (!vehicle) return Response.json({ error: "Reservation vehicle not found" }, { status: 404 });
 
-    const pdf = await generateReservationContractPdf({ reservation, customer, vehicle, locale, currency });
+    const pdf = await generateReservationContractPdf({ reservation, customer, vehicle, locale, currency: settings.currency });
     const pdfBody = pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer;
     const contractNumber = getReservationContractNumber(reservation.id);
 

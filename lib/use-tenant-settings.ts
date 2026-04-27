@@ -7,6 +7,10 @@ const DEFAULT_SETTINGS: TenantSettings = {
   locations: ["Airport", "Downtown"],
   extras: ["GPS", "Wi-Fi", "Child Seat"],
   currency: "EUR",
+  contractLanguages: ["en", "sr"],
+  uiLanguages: ["en", "sr"],
+  defaultContractLanguage: "en",
+  defaultUiLanguage: "en",
 };
 
 export function useTenantSettings() {
