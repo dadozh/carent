@@ -29,7 +29,7 @@ export default function AddVehiclePage() {
       plate: data.plate,
       vin: data.vin || undefined,
       color: data.color,
-      mileage: Number(data.mileage) || 0,
+      mileage: Number(data.mileage),
       dailyRate: Number(data.dailyRate),
       pricingTemplateId: data.pricingMode === "template" ? data.pricingTemplateId || null : null,
       pricingTiers: [],

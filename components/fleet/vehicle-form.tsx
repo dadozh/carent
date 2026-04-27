@@ -271,6 +271,7 @@ export function VehicleForm({ vehicle, pricingTemplates = [], onSave, onBack }: 
     if (!form.color) errs.color = t("vehicleForm.required");
     if (!form.plate.trim()) errs.plate = t("vehicleForm.required");
     if (!form.dailyRate || Number(form.dailyRate) <= 0) errs.dailyRate = t("vehicleForm.mustBePositive");
+    if (form.mileage === "" || !Number.isFinite(Number(form.mileage)) || Number(form.mileage) < 0) errs.mileage = t("vehicleForm.required");
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
