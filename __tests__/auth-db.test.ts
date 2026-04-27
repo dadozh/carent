@@ -141,7 +141,10 @@ describeIfDb("auth-db — tenant user management", () => {
     const tenant = await createTenant("Tenant A", testSlug("h1"));
 
     expect(await getTenantSettings(tenant.id)).toEqual({
-      locations: ["Airport", "Downtown"],
+      locations: [
+        { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+        { key: "Downtown", labels: { en: "Downtown", sr: "Centar grada" } },
+      ],
       extras: ["GPS", "Wi-Fi", "Child Seat"],
       currency: "EUR",
       contractLanguages: ["en", "sr"],
@@ -156,7 +159,12 @@ describeIfDb("auth-db — tenant user management", () => {
     const tenant = await createTenant("Tenant A", testSlug("i1"));
 
     await updateTenantSettings(tenant.id, {
-      locations: ["Airport", " Downtown ", "Airport", ""],
+      locations: [
+        { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+        { key: "downtown", labels: { en: " Downtown ", sr: "Centar" } },
+        { key: "Airport", labels: { en: "Airport duplicate" } },
+        { key: "", labels: { en: "" } },
+      ],
       extras: ["GPS", "Baby Seat", "GPS"],
       currency: "EUR",
       contractLanguages: ["de", "en"],
@@ -166,7 +174,10 @@ describeIfDb("auth-db — tenant user management", () => {
     });
 
     expect(await getTenantSettings(tenant.id)).toEqual({
-      locations: ["Airport", "Downtown"],
+      locations: [
+        { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+        { key: "downtown", labels: { en: "Downtown", sr: "Centar" } },
+      ],
       extras: ["GPS", "Baby Seat"],
       currency: "EUR",
       contractLanguages: ["de", "en"],

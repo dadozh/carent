@@ -58,6 +58,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { LOCALE_LABELS, useI18n } from "@/lib/i18n";
+import { resolveLocationLabel } from "@/lib/location";
 import { useVehicles } from "@/lib/use-vehicles";
 import { useReservations } from "@/lib/use-reservations";
 import { useTenantSettings } from "@/lib/use-tenant-settings";
@@ -131,7 +132,7 @@ const initialCustomer = {
 };
 
 export default function ReservationsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { vehicles } = useVehicles();
   const { settings: tenantSettings } = useTenantSettings();
   const currency = useCurrency();
@@ -295,11 +296,6 @@ export default function ReservationsPage() {
     cancelled: t("res.status.cancelled"),
   };
 
-  const locationLabels: Record<string, string> = {
-    Airport: t("public.airport"),
-    Downtown: t("public.downtown"),
-  };
-
   const extraLabels: Record<string, string> = {
     GPS: t("booking.gps"),
     "Wi-Fi": t("booking.wifi"),
@@ -309,8 +305,8 @@ export default function ReservationsPage() {
   useEffect(() => {
     if (bookingLocations.length === 0) return;
     setNewBooking((current) => {
-      const pickupLocation = current.pickupLocation || bookingLocations[0];
-      const returnLocation = current.returnLocation || bookingLocations[0];
+      const pickupLocation = current.pickupLocation || bookingLocations[0].key;
+      const returnLocation = current.returnLocation || bookingLocations[0].key;
       if (pickupLocation === current.pickupLocation && returnLocation === current.returnLocation) {
         return current;
       }
@@ -1137,14 +1133,14 @@ export default function ReservationsPage() {
                       <div className="flex gap-2 mt-1">
                         {bookingLocations.map((loc) => (
                           <button
-                            key={loc}
-                            onClick={() => setNewBooking((current) => ({ ...current, pickupLocation: loc }))}
+                            key={loc.key}
+                            onClick={() => setNewBooking((current) => ({ ...current, pickupLocation: loc.key }))}
                             className={`flex-1 rounded-lg border p-2 text-sm ${
-                              newBooking.pickupLocation === loc ? "border-primary bg-primary/5" : ""
+                              newBooking.pickupLocation === loc.key ? "border-primary bg-primary/5" : ""
                             }`}
                           >
                             <MapPin className="h-3 w-3 inline mr-1" />
-                            {locationLabels[loc] ?? loc}
+                            {resolveLocationLabel(loc.key, locale, bookingLocations)}
                           </button>
                         ))}
                       </div>
@@ -1154,14 +1150,14 @@ export default function ReservationsPage() {
                       <div className="flex gap-2 mt-1">
                         {bookingLocations.map((loc) => (
                           <button
-                            key={loc}
-                            onClick={() => setNewBooking((current) => ({ ...current, returnLocation: loc }))}
+                            key={loc.key}
+                            onClick={() => setNewBooking((current) => ({ ...current, returnLocation: loc.key }))}
                             className={`flex-1 rounded-lg border p-2 text-sm ${
-                              newBooking.returnLocation === loc ? "border-primary bg-primary/5" : ""
+                              newBooking.returnLocation === loc.key ? "border-primary bg-primary/5" : ""
                             }`}
                           >
                             <MapPin className="h-3 w-3 inline mr-1" />
-                            {locationLabels[loc] ?? loc}
+                            {resolveLocationLabel(loc.key, locale, bookingLocations)}
                           </button>
                         ))}
                       </div>
@@ -1508,11 +1504,11 @@ export default function ReservationsPage() {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">{t("booking.pickup")}</span>
-                        <span className="font-medium">{locationLabels[newBooking.pickupLocation] ?? newBooking.pickupLocation}</span>
+                        <span className="font-medium">{resolveLocationLabel(newBooking.pickupLocation, locale, bookingLocations)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">{t("booking.return")}</span>
-                        <span className="font-medium">{locationLabels[newBooking.returnLocation] ?? newBooking.returnLocation}</span>
+                        <span className="font-medium">{resolveLocationLabel(newBooking.returnLocation, locale, bookingLocations)}</span>
                       </div>
                       {newBooking.extras.length > 0 && (
                         <div className="flex justify-between text-sm">
@@ -1682,7 +1678,7 @@ export default function ReservationsPage() {
                     <MapPin className="h-4 w-4 text-muted-foreground" />
                     <div>
                       <p className="text-sm font-medium">
-                        {locationLabels[selectedReservation.pickupLocation] ?? selectedReservation.pickupLocation} &rarr; {locationLabels[selectedReservation.returnLocation] ?? selectedReservation.returnLocation}
+                        {resolveLocationLabel(selectedReservation.pickupLocation, locale, bookingLocations)} &rarr; {resolveLocationLabel(selectedReservation.returnLocation, locale, bookingLocations)}
                       </p>
                       <p className="text-xs text-muted-foreground">{t("res.locations")}</p>
                     </div>

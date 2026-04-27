@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/schema";
 import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType, Vehicle } from "@/lib/mock-data";
 import { getTenantSettings } from "@/lib/auth-db";
+import { hasLocationKey } from "@/lib/location";
 import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
 import { calculateCost, resolveTier } from "@/lib/pricing";
@@ -209,8 +210,8 @@ async function validateReservationExtras(extras: string[], tenantId: string) {
 
 async function validateReservationLocations(pickupLocation: string, returnLocation: string, tenantId: string) {
   const settings = await getTenantSettings(tenantId);
-  if (pickupLocation && !settings.locations.includes(pickupLocation)) throw new Error(`Invalid pickup location: ${pickupLocation}`);
-  if (returnLocation && !settings.locations.includes(returnLocation)) throw new Error(`Invalid return location: ${returnLocation}`);
+  if (pickupLocation && !hasLocationKey(settings.locations, pickupLocation)) throw new Error(`Invalid pickup location: ${pickupLocation}`);
+  if (returnLocation && !hasLocationKey(settings.locations, returnLocation)) throw new Error(`Invalid return location: ${returnLocation}`);
 }
 
 async function validateVehicleReservationConflict(

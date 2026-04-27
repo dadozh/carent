@@ -8,6 +8,7 @@ import {
   primaryKey,
   index,
   unique,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // ─── Tenants & auth ───────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ export const tenants = pgTable("tenants", {
 
 export const tenantSettings = pgTable("tenant_settings", {
   tenantId:                text("tenant_id").primaryKey().references(() => tenants.id),
-  locations:               text("locations").array().notNull().default([]),
+  locations:               jsonb("locations").notNull().default([]),
   extras:                  text("extras").array().notNull().default([]),
   currency:                text("currency").notNull().default("EUR"),
   contractLanguages:       text("contract_languages").array().notNull().default(["en", "sr"]),

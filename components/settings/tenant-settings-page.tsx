@@ -3,7 +3,8 @@
 import { TenantSettingsForm } from "@/components/settings/tenant-settings-form";
 import { LogoUpload } from "@/components/settings/logo-upload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type Locale } from "@/lib/i18n";
+import type { LocationEntry } from "@/lib/location";
 
 export function TenantSettingsPageClient({
   initialLocations,
@@ -12,7 +13,7 @@ export function TenantSettingsPageClient({
   initialUiLanguages,
   initialDefaultUiLanguage,
 }: {
-  initialLocations: string[];
+  initialLocations: LocationEntry[];
   initialExtras: string[];
   initialCurrency: string;
   initialUiLanguages: Locale[];

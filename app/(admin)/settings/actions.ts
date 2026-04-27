@@ -6,6 +6,7 @@ import { getAuditRequestContext } from "@/lib/audit-request";
 import { getTenantSettings, updateTenantSettings } from "@/lib/auth-db";
 import { isLocale, type Locale } from "@/lib/i18n-config";
 import { type TranslationKey } from "@/lib/i18n";
+import { normalizeLocationEntries } from "@/lib/location";
 import { can } from "@/lib/permissions";
 import { verifySession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
@@ -27,6 +28,16 @@ function parseList(value: string) {
     .split(/\r?\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseLocations(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") return [];
+
+  try {
+    return normalizeLocationEntries(JSON.parse(value));
+  } catch {
+    throw new Error("settings.tenant.updateError");
+  }
 }
 
 function parseLanguageList(formData: FormData, field: string): Locale[] {
@@ -56,7 +67,7 @@ export async function updateTenantSettingsAction(
   try {
     const previousSettings = await getTenantSettings(session.tenantId);
     const nextSettings = {
-      locations: parseList(`${formData.get("locations") ?? ""}`),
+      locations: parseLocations(formData.get("locations")),
       extras: parseList(`${formData.get("extras") ?? ""}`),
       currency: (["EUR", "USD", "RSD", "BAM"] as const).includes(
         formData.get("currency") as "EUR"
@@ -93,8 +104,8 @@ export async function updateTenantSettingsAction(
         changes: [
           {
             field: "locations",
-            oldValue: previousSettings.locations.join(", ") || null,
-            newValue: nextSettings.locations.join(", ") || null,
+            oldValue: previousSettings.locations.map((location) => location.key).join(", ") || null,
+            newValue: nextSettings.locations.map((location) => location.key).join(", ") || null,
           },
           {
             field: "extras",

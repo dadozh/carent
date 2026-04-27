@@ -114,6 +114,7 @@ export async function POST(
       ...previewData,
       tenant,
       locale: language,
+      locations: settings.locations,
       currency: settings.currency,
       template: draft,
     });

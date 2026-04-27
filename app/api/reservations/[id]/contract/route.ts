@@ -69,6 +69,7 @@ export async function GET(
       vehicle,
       tenant,
       locale,
+      locations: settings.locations,
       currency: settings.currency,
       template: template.published ?? template.draft,
     });

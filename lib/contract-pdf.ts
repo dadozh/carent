@@ -7,6 +7,7 @@ import {
 } from "@/lib/contract-template-content";
 import { formatDate, formatDateTimeRange } from "@/lib/date-format";
 import type { Locale } from "@/lib/i18n-config";
+import { resolveLocationLabel, type LocationEntry } from "@/lib/location";
 import type { Customer, Reservation, Vehicle } from "@/lib/mock-data";
 
 interface ContractPdfInput {
@@ -15,6 +16,7 @@ interface ContractPdfInput {
   vehicle: Vehicle;
   tenant: Pick<Tenant, "name">;
   locale: Locale;
+  locations: LocationEntry[];
   currency: string;
   template: ContractTemplateDocument;
 }
@@ -39,21 +41,6 @@ const statusLabels: Record<ContractLocale, Record<Reservation["status"], string>
     active: "Aktivno",
     completed: "Završeno",
     cancelled: "Otkazano",
-  },
-};
-
-const locationLabels: Record<ContractLocale, Record<string, string>> = {
-  en: {
-    Airport: "Airport",
-    Downtown: "Downtown",
-    Workshop: "Workshop",
-    Storage: "Storage",
-  },
-  sr: {
-    Airport: "Aerodrom",
-    Downtown: "Centar grada",
-    Workshop: "Radionica",
-    Storage: "Skladište",
   },
 };
 
@@ -171,6 +158,7 @@ function buildTemplateValues({
   vehicle,
   tenant,
   locale,
+  locations,
   currency,
 }: Omit<ContractPdfInput, "template">): Record<string, string> {
   const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}${vehicle.trim ? ` ${vehicle.trim}` : ""}`;
@@ -199,8 +187,8 @@ function buildTemplateValues({
     "{{vehicle.mileage}}": `${vehicle.mileage.toLocaleString("de-DE")} km`,
     "{{reservation.status}}": statusLabels[contractLocale(locale)][reservation.status],
     "{{reservation.period}}": rentalPeriod,
-    "{{reservation.pickupLocation}}": translate(locale, locationLabels, reservation.pickupLocation),
-    "{{reservation.returnLocation}}": translate(locale, locationLabels, reservation.returnLocation),
+    "{{reservation.pickupLocation}}": resolveLocationLabel(reservation.pickupLocation, locale, locations),
+    "{{reservation.returnLocation}}": resolveLocationLabel(reservation.returnLocation, locale, locations),
     "{{reservation.dailyRate}}": formatMoney(reservation.dailyRate, currency),
     "{{reservation.totalCost}}": formatMoney(reservation.totalCost, currency),
     "{{reservation.extras}}": reservation.extras.length

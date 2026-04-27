@@ -34,6 +34,7 @@ import {
   parseEuropeanDate,
 } from "@/lib/date-format";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
+import { resolveLocationLabel, type LocationEntry } from "@/lib/location";
 
 type Step = "search" | "select" | "details" | "confirm";
 
@@ -47,10 +48,10 @@ export function PublicBookingPage({
   currency?: string;
   tenantSlug: string;
   tenantName: string;
-  locations: string[];
+  locations: LocationEntry[];
   availableExtras: string[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [step, setStep] = useState<Step>("search");
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
@@ -204,13 +205,7 @@ export function PublicBookingPage({
   }
 
   function getLocationLabel(value: string) {
-    const labels: Record<string, string> = {
-      Airport: t("public.airport"),
-      Downtown: t("public.downtown"),
-      Workshop: t("vehicleForm.location.workshop"),
-      Storage: t("vehicleForm.location.storage"),
-    };
-    return labels[value] ?? value;
+    return resolveLocationLabel(value, locale, locations);
   }
 
   function getColorLabel(value: string) {
@@ -360,7 +355,7 @@ export function PublicBookingPage({
                     >
                       <option value="all">{t("public.allLocations")}</option>
                       {locations.map((item) => (
-                        <option key={item} value={item}>{getLocationLabel(item)}</option>
+                        <option key={item.key} value={item.key}>{getLocationLabel(item.key)}</option>
                       ))}
                     </select>
                   </div>

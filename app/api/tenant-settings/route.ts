@@ -3,6 +3,7 @@ import { assertCan } from "@/lib/permissions";
 import { DEFAULT_TENANT_SETTINGS, getTenantSettings, updateTenantSettings } from "@/lib/auth-db";
 import { getMissingPublishedContractLanguages } from "@/lib/contract-template-db";
 import { isLocale, type Locale } from "@/lib/i18n-config";
+import { normalizeLocationEntries } from "@/lib/location";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ export async function PATCH(request: Request) {
     const { tenantId, role } = await getApiSession();
     assertCan(role, "manageSettings");
     const data = await request.json() as {
-      locations?: string[];
+      locations?: unknown;
       extras?: string[];
       currency?: string;
       contractLanguages?: string[];
@@ -56,7 +57,7 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Publish contract templates before enabling those languages" }, { status: 400 });
     }
     await updateTenantSettings(tenantId, {
-      locations: data.locations ?? [],
+      locations: normalizeLocationEntries(data.locations),
       extras: data.extras ?? [],
       currency: sanitizeCurrency(data.currency),
       contractLanguages,

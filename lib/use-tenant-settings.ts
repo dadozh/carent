@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import type { TenantSettings } from "@/lib/auth-db";
 
 const DEFAULT_SETTINGS: TenantSettings = {
-  locations: ["Airport", "Downtown"],
+  locations: [
+    { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+    { key: "Downtown", labels: { en: "Downtown", sr: "Centar grada" } },
+  ],
   extras: ["GPS", "Wi-Fi", "Child Seat"],
   currency: "EUR",
   contractLanguages: ["en", "sr"],
