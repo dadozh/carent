@@ -14,6 +14,8 @@ import { Stepper } from "@/components/ui/stepper";
 import { cn } from "@/lib/utils";
 import { getMakes, getModels } from "@/lib/vehicle-data";
 import { useI18n } from "@/lib/i18n";
+import { useCurrency } from "@/lib/tenant-context";
+import { formatMoneyCompact } from "@/lib/format-money";
 import type { Vehicle, VehicleCategory, VehicleStatus } from "@/lib/mock-data";
 import type { PricingTier, PricingTemplate } from "@/lib/pricing";
 import { TierEditor } from "@/components/settings/tier-editor";
@@ -150,6 +152,7 @@ interface VehicleFormProps {
 
 export function VehicleForm({ vehicle, pricingTemplates = [], onSave, onBack }: VehicleFormProps) {
   const { t } = useI18n();
+  const currency = useCurrency();
   const isEdit = !!vehicle;
 
   // Form state — pre-fill from vehicle in edit mode
@@ -521,7 +524,7 @@ export function VehicleForm({ vehicle, pricingTemplates = [], onSave, onBack }: 
                   <div className="mt-2 space-y-0.5">
                     {sorted.map((tier, i) => (
                       <p key={i} className="text-xs text-muted-foreground">
-                        {tier.maxDays === null ? "Above all" : `Up to ${tier.maxDays} days`} → €{tier.dailyRate.toFixed(2)}/day
+                        {tier.maxDays === null ? "Above all" : `Up to ${tier.maxDays} days`} → {formatMoneyCompact(tier.dailyRate, currency)}/day
                       </p>
                     ))}
                   </div>

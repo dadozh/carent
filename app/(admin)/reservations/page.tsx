@@ -2406,11 +2406,11 @@ export default function ReservationsPage() {
                   <div className="rounded-lg bg-muted/50 p-3 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("res.extensionAdditionalCost")}</span>
-                      <span className="font-bold text-primary">+€{extraCost}</span>
+                      <span className="font-bold text-primary">+{formatMoney(extraCost, currency)}</span>
                     </div>
                     <div className="flex justify-between mt-1">
                       <span className="text-muted-foreground">{t("common.total")}</span>
-                      <span className="font-bold">€{selectedReservation.totalCost + extraCost}</span>
+                      <span className="font-bold">{formatMoney(selectedReservation.totalCost + extraCost, currency)}</span>
                     </div>
                   </div>
                 ) : null;

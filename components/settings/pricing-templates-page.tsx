@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { TierEditor } from "@/components/settings/tier-editor";
 import { usePricingTemplates } from "@/lib/use-pricing-templates";
 import type { PricingTier } from "@/lib/pricing";
+import { useCurrency } from "@/lib/tenant-context";
+import { formatMoneyCompact } from "@/lib/format-money";
 import { cn } from "@/lib/utils";
 
 interface TemplateFormState {
@@ -18,6 +20,7 @@ interface TemplateFormState {
 const EMPTY_FORM: TemplateFormState = { name: "", tiers: [] };
 
 export function PricingTemplatesPage() {
+  const currency = useCurrency();
   const { templates, loading, createTemplate, updateTemplate, deleteTemplate } = usePricingTemplates();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null); // template id or "new"
@@ -136,7 +139,7 @@ export function PricingTemplatesPage() {
                         <p key={i} className="text-sm">
                           <span className="text-muted-foreground">{tier.maxDays === null ? "Above all" : `Up to ${tier.maxDays} days`}</span>
                           {" → "}
-                          <span className="font-medium">€{tier.dailyRate.toFixed(2)}/day</span>
+                          <span className="font-medium">{formatMoneyCompact(tier.dailyRate, currency)}/day</span>
                         </p>
                       ))}
                     </div>
