@@ -15,6 +15,21 @@ npx drizzle-kit migrate
 
 Set `CARENT_UPLOAD_DIR` anywhere the app should persist uploaded files. Uploaded assets are stored on disk and served through `/api/uploads/...`.
 
+## Testing
+
+Run the main test suite with:
+
+```bash
+npm test
+```
+
+Vitest is configured to:
+
+- load `.env.local`, so DB-backed integration tests can use the local `DATABASE_URL`
+- exclude `dist/**`, so packaged build artifacts do not get picked up as duplicate test suites
+
+The DB integration tests require network access to the configured Postgres instance. In restricted sandboxed environments, those tests can still fail with connection errors even when `DATABASE_URL` is present.
+
 ## Docker
 
 Use a named volume for uploads. That is the better default here because it persists across container replacement without coupling the deployment to a specific host path.
