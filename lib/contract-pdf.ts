@@ -9,7 +9,7 @@ interface ContractPdfInput {
   customer: Customer;
   vehicle: Vehicle;
   locale: Locale;
-  currency?: string;
+  currency: string;
 }
 
 type ContractLabelSet = {
@@ -371,7 +371,7 @@ export async function generateReservationContractPdf({
   customer,
   vehicle,
   locale,
-  currency = "EUR",
+  currency,
 }: ContractPdfInput) {
   const t = labels[locale];
   const rentalPeriod = formatDateTimeRange(
