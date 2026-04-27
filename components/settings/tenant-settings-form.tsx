@@ -214,7 +214,7 @@ export function TenantSettingsForm({
                   </div>
                 ))}
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Action
+                  {t("settings.tenant.action")}
                 </div>
               </div>
 
@@ -313,7 +313,7 @@ export function TenantSettingsForm({
                   {t("settings.tenant.extraPrice")}
                 </div>
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Action
+                  {t("settings.tenant.action")}
                 </div>
               </div>
 
@@ -359,7 +359,7 @@ export function TenantSettingsForm({
                           className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          {t("settings.tenant.removeLocation")}
+                          {t("settings.tenant.removeExtra")}
                         </button>
                       </div>
                     </div>
@@ -398,7 +398,7 @@ export function TenantSettingsForm({
                           className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          {t("settings.tenant.removeLocation")}
+                          {t("settings.tenant.removeExtra")}
                         </button>
                       </div>
                     </div>

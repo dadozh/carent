@@ -83,6 +83,8 @@ export async function updateTenantSettingsAction(
       locations: nextSettings.locations,
       extras: nextSettings.extras,
       currency: nextSettings.currency,
+      // Contract language settings are managed separately from /settings/contracts
+      // and must not be overwritten by this general settings form.
       contractLanguages: previousSettings.contractLanguages,
       defaultContractLanguage: previousSettings.defaultContractLanguage,
       uiLanguages: nextSettings.uiLanguages,

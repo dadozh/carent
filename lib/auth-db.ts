@@ -146,10 +146,6 @@ function isValidTenantUserRole(role: UserRole): boolean {
   return TENANT_USER_ROLES.includes(role as (typeof TENANT_USER_ROLES)[number]);
 }
 
-function uniqueNonEmpty(values: string[]): string[] {
-  return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
-}
-
 function normalizeLanguageList(values: readonly string[], label: string): Locale[] {
   const languages = [...new Set(values.map((v) => v.trim()).filter(Boolean))];
   if (!languages.length) throw new Error(`At least one ${label} language is required`);

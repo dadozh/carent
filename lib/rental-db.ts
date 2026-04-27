@@ -533,9 +533,13 @@ export async function extendReservation(id: string, input: ExtendReservationInpu
     reservation.vehicleId, reservation.startDate, input.newEndDate, reservation.pickupTime, input.newReturnTime, tenantId, id
   );
 
+  const settings = await getTenantSettings(tenantId);
   const oldDays = Math.max(1, Math.ceil((new Date(reservation.endDate).getTime() - new Date(reservation.startDate).getTime()) / 86400000));
   const newDays = Math.max(1, Math.ceil((new Date(input.newEndDate).getTime() - new Date(reservation.startDate).getTime()) / 86400000));
-  const additionalCost = Math.max(0, Math.round((newDays - oldDays) * reservation.dailyRate * 100) / 100);
+  const addedDays = newDays - oldDays;
+  const additionalVehicleCost = Math.round(addedDays * reservation.dailyRate * 100) / 100;
+  const additionalExtrasCost = calculateExtraTotal(reservation.extras, settings.extras, addedDays);
+  const additionalCost = Math.max(0, Math.round((additionalVehicleCost + additionalExtrasCost) * 100) / 100);
   const newTotalCost = Math.round((reservation.totalCost + additionalCost) * 100) / 100;
 
   await db.transaction(async (tx) => {

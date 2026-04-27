@@ -30,6 +30,9 @@ export interface ContractTemplatePlaceholder {
 const TEMPLATE_PAGE_WIDTH = 210;
 const TEMPLATE_PAGE_HEIGHT = 297;
 
+// Only EN and SR have real default content. All other locales (de, bs, hr)
+// fall back to English. Tenants enabling those languages should use the
+// "Reset to defaults" + manual translation flow in the contract editor.
 function contractLocale(locale: Locale): "en" | "sr" {
   return locale === "sr" ? "sr" : "en";
 }

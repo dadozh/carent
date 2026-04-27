@@ -47,15 +47,19 @@ export async function GET(
 
     const archived = await getGeneratedContract(tenantId, reservation.id, locale);
     if (archived) {
-      const archivedBody = await readFile(getStoredFilePathFromUrl(archived.fileUrl));
-      const contractNumber = getReservationContractNumber(reservation.id);
-      return new Response(archivedBody, {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="rental-contract-${locale}-${contractNumber}.pdf"`,
-          "Cache-Control": "no-store",
-        },
-      });
+      try {
+        const archivedBody = await readFile(getStoredFilePathFromUrl(archived.fileUrl));
+        const contractNumber = getReservationContractNumber(reservation.id);
+        return new Response(archivedBody, {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="rental-contract-${locale}-${contractNumber}.pdf"`,
+            "Cache-Control": "no-store",
+          },
+        });
+      } catch {
+        // Archive file missing from disk — fall through to regenerate.
+      }
     }
 
     const template = await getPublishedContractTemplate(tenantId, locale);

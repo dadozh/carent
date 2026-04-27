@@ -85,14 +85,20 @@ async function ensureTemplateRow(tenantId: string, language: Locale) {
 }
 
 export async function ensureContractTemplateScaffold(tenantId: string): Promise<void> {
-  const [tenant, settings] = await Promise.all([
-    getTenantByIdIncludingInactive(tenantId),
-    getTenantSettings(tenantId),
-  ]);
-  if (!tenant) throw new Error("Tenant not found");
+  // Guard: skip the upsert work if all locale rows already exist.
+  const existing = await db.select({ language: contractTemplates.language })
+    .from(contractTemplates)
+    .where(eq(contractTemplates.tenantId, tenantId));
+  const missingLocales = ALL_LOCALES.filter((l) => !existing.some((r) => r.language === l));
 
-  await Promise.all(ALL_LOCALES.map((language) => ensureTemplateRow(tenantId, language)));
+  if (missingLocales.length > 0) {
+    const [tenant] = await Promise.all([getTenantByIdIncludingInactive(tenantId)]);
+    if (!tenant) throw new Error("Tenant not found");
+    await Promise.all(missingLocales.map((language) => ensureTemplateRow(tenantId, language)));
+  }
 
+  // Auto-publish enabled languages that have no published content yet.
+  const settings = await getTenantSettings(tenantId);
   const enabledLanguages = settings.contractLanguages;
   if (!enabledLanguages.length) return;
 
