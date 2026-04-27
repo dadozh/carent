@@ -29,6 +29,7 @@ export interface Tenant {
 export interface TenantSettings {
   locations: string[];
   extras: string[];
+  currency: string;
 }
 
 export interface TenantBillingSettings {
@@ -76,6 +77,7 @@ export const TENANT_USER_ROLES = [
 export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   locations: ["Airport", "Downtown"],
   extras: ["GPS", "Wi-Fi", "Child Seat"],
+  currency: "EUR",
 };
 
 export const DEFAULT_TENANT_BILLING_SETTINGS: TenantBillingSettings = {
@@ -358,15 +360,20 @@ export async function getTenantSettings(tenantId: string): Promise<TenantSetting
   if (!row) return DEFAULT_TENANT_SETTINGS;
   const locations = uniqueNonEmpty(row.locations ?? []);
   const extras = uniqueNonEmpty(row.extras ?? []);
-  return { locations: locations.length ? locations : DEFAULT_TENANT_SETTINGS.locations, extras: extras.length ? extras : DEFAULT_TENANT_SETTINGS.extras };
+  return {
+    locations: locations.length ? locations : DEFAULT_TENANT_SETTINGS.locations,
+    extras: extras.length ? extras : DEFAULT_TENANT_SETTINGS.extras,
+    currency: row.currency || DEFAULT_TENANT_SETTINGS.currency,
+  };
 }
 
 export async function updateTenantSettings(tenantId: string, settings: TenantSettings): Promise<Tenant> {
   const locations = uniqueNonEmpty(settings.locations);
   const extras = uniqueNonEmpty(settings.extras);
+  const currency = settings.currency || DEFAULT_TENANT_SETTINGS.currency;
   if (!locations.length) throw new Error("At least one location is required");
-  await db.insert(tenantSettings).values({ tenantId, locations, extras })
-    .onConflictDoUpdate({ target: tenantSettings.tenantId, set: { locations, extras, updatedAt: sql`NOW()` } });
+  await db.insert(tenantSettings).values({ tenantId, locations, extras, currency })
+    .onConflictDoUpdate({ target: tenantSettings.tenantId, set: { locations, extras, currency, updatedAt: sql`NOW()` } });
   return (await getTenantByIdIncludingInactive(tenantId))!;
 }
 

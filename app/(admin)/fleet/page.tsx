@@ -12,10 +12,13 @@ import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { VehiclePhoto } from "@/components/fleet/vehicle-photo";
 import { useCan } from "@/lib/role-context";
+import { useCurrency } from "@/lib/tenant-context";
+import { vehiclePriceDisplay } from "@/lib/format-money";
 
 export default function FleetPage() {
   const { t } = useI18n();
   const { vehicles } = useVehicles();
+  const currency = useCurrency();
   const canManageFleet = useCan("manageFleet");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<VehicleStatus | "all">("all");
@@ -207,7 +210,7 @@ export default function FleetPage() {
                       </p>
                     </div>
                     <p className="text-lg font-bold text-primary">
-                      &euro;{vehicle.dailyRate}
+                      {vehiclePriceDisplay(vehicle, currency)}
                       <span className="text-xs font-normal text-muted-foreground">{t("common.perDay")}</span>
                     </p>
                   </div>
@@ -273,7 +276,7 @@ export default function FleetPage() {
                   {statusLabels[vehicle.status]}
                 </Badge>
                 <p className="font-bold text-primary w-20 text-right">
-                  &euro;{vehicle.dailyRate}{t("common.perDay")}
+                  {vehiclePriceDisplay(vehicle, currency)}{t("common.perDay")}
                 </p>
               </Link>
             ))}

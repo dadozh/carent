@@ -41,7 +41,10 @@ async function cleanupTestTenants() {
   await db.execute(sql`DELETE FROM customers WHERE tenant_id IN (${T1}, ${T2})`);
   await db.execute(sql`DELETE FROM vehicle_images WHERE vehicle_id IN (SELECT id FROM vehicles WHERE tenant_id IN (${T1}, ${T2}))`);
   await db.execute(sql`DELETE FROM vehicle_maintenance_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE tenant_id IN (${T1}, ${T2}))`);
+  await db.execute(sql`DELETE FROM vehicle_pricing_tiers WHERE tenant_id IN (${T1}, ${T2})`);
   await db.execute(sql`DELETE FROM vehicles WHERE tenant_id IN (${T1}, ${T2})`);
+  await db.execute(sql`DELETE FROM pricing_template_tiers WHERE template_id IN (SELECT id FROM pricing_templates WHERE tenant_id IN (${T1}, ${T2}))`);
+  await db.execute(sql`DELETE FROM pricing_templates WHERE tenant_id IN (${T1}, ${T2})`);
   await db.execute(sql`DELETE FROM tenant_settings WHERE tenant_id IN (${T1}, ${T2})`);
   await db.execute(sql`DELETE FROM users WHERE tenant_id IN (${T1}, ${T2})`);
   await db.execute(sql`DELETE FROM tenants WHERE id IN (${T1}, ${T2})`);

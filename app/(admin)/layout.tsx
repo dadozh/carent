@@ -5,6 +5,7 @@ import { RoleProvider } from "@/lib/role-context";
 import { PlanProvider } from "@/lib/plan-context";
 import { TenantProvider } from "@/lib/tenant-context";
 import { verifySession } from "@/lib/session";
+import { getTenantSettings } from "@/lib/auth-db";
 import { redirect } from "next/navigation";
 
 export default async function AdminLayout({
@@ -15,10 +16,12 @@ export default async function AdminLayout({
   const session = await verifySession();
   if (!session) redirect("/login");
 
+  const { currency } = await getTenantSettings(session.tenantId);
+
   return (
     <RoleProvider role={session.role}>
     <PlanProvider plan={session.plan ?? "starter"} featureOverrides={session.featureOverrides ?? {}}>
-    <TenantProvider initialLogoUrl={session.logoUrl ?? null}>
+    <TenantProvider initialLogoUrl={session.logoUrl ?? null} initialCurrency={currency}>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">

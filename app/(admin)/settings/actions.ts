@@ -40,11 +40,15 @@ export async function updateTenantSettingsAction(
     const nextSettings = {
       locations: parseList(`${formData.get("locations") ?? ""}`),
       extras: parseList(`${formData.get("extras") ?? ""}`),
+      currency: (["EUR", "USD", "RSD", "BAM"] as const).includes(
+        formData.get("currency") as "EUR"
+      ) ? `${formData.get("currency")}` : "EUR",
     };
     const previousSettings = await getTenantSettings(session.tenantId);
     await updateTenantSettings(session.tenantId, {
       locations: nextSettings.locations,
       extras: nextSettings.extras,
+      currency: nextSettings.currency,
     });
     const requestContext = await getAuditRequestContext();
     void logAction({

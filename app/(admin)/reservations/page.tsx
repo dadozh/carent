@@ -63,6 +63,9 @@ import { useReservations } from "@/lib/use-reservations";
 import { useTenantSettings } from "@/lib/use-tenant-settings";
 import { useCan } from "@/lib/role-context";
 import { usePlanFeature } from "@/lib/plan-context";
+import { useCurrency } from "@/lib/tenant-context";
+import { formatMoney, formatMoneyCompact, vehiclePriceDisplay } from "@/lib/format-money";
+import { calculateCost, effectiveDailyRate as tierDailyRate } from "@/lib/pricing";
 import { uploadFiles } from "@/lib/storage";
 import {
   getReservationOutstandingAmount,
@@ -131,6 +134,7 @@ export default function ReservationsPage() {
   const { t } = useI18n();
   const { vehicles } = useVehicles();
   const { settings: tenantSettings } = useTenantSettings();
+  const currency = useCurrency();
   const {
     customers,
     addCustomer,
@@ -248,12 +252,17 @@ export default function ReservationsPage() {
     ? Math.ceil(rentalDurationMs / (1000 * 60 * 60 * 24))
     : 0;
   const parsedDailyRateOverride = Number(newBooking.dailyRateOverride);
+  const hasOverride = Number.isFinite(parsedDailyRateOverride) && parsedDailyRateOverride > 0;
   const effectiveDailyRate = selectedVehicle
-    ? Number.isFinite(parsedDailyRateOverride) && parsedDailyRateOverride > 0
+    ? hasOverride
       ? parsedDailyRateOverride
-      : selectedVehicle.dailyRate
+      : tierDailyRate(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
     : 0;
-  const totalCost = effectiveDailyRate * dayCount;
+  const totalCost = selectedVehicle
+    ? hasOverride
+      ? Math.round(parsedDailyRateOverride * dayCount * 100) / 100
+      : calculateCost(dayCount, selectedVehicle.pricingTiers ?? [], selectedVehicle.dailyRate)
+    : 0;
   const customerError = getCustomerError();
 
   const statusFilters: { value: ReservationStatus | "all"; label: string }[] = [
@@ -668,7 +677,7 @@ export default function ReservationsPage() {
         endDate: newBooking.endDate,
         returnTime: newBooking.returnTime,
         status: "confirmed",
-        dailyRate: effectiveDailyRate,
+        dailyRate: hasOverride ? parsedDailyRateOverride : undefined,
         totalCost,
         extras: newBooking.extras,
         pickupLocation: newBooking.pickupLocation,
@@ -1021,7 +1030,7 @@ export default function ReservationsPage() {
                   </div>
                   <div className="text-right shrink-0">
                     <div className="flex items-center justify-end gap-1.5">
-                      <p className="text-sm font-bold">&euro;{reservation.totalCost}</p>
+                      <p className="text-sm font-bold">{formatMoney(reservation.totalCost, currency)}</p>
                       {isReservationFullyPaid(reservation) && (
                         <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
                       )}
@@ -1239,7 +1248,7 @@ export default function ReservationsPage() {
                                   <p className="text-xs text-destructive">{t("booking.vehicleUnavailableForPeriod")}</p>
                                 )}
                               </div>
-                              <p className="text-sm font-bold text-primary shrink-0">&euro;{v.dailyRate}{t("common.perDay")}</p>
+                              <p className="text-sm font-bold text-primary shrink-0">{vehiclePriceDisplay(v, currency)}{t("common.perDay")}</p>
                             </button>
                           );
                         })}
@@ -1529,11 +1538,11 @@ export default function ReservationsPage() {
                       <Separator />
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">{t("res.dailyRate")}</span>
-                        <span className="font-medium">&euro;{effectiveDailyRate}</span>
+                        <span className="font-medium">{formatMoneyCompact(effectiveDailyRate, currency)}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold">
                         <span>{t("common.total")}</span>
-                        <span className="text-primary">&euro;{totalCost}</span>
+                        <span className="text-primary">{formatMoney(totalCost, currency)}</span>
                       </div>
                     </div>
                     <div>
@@ -1701,11 +1710,11 @@ export default function ReservationsPage() {
                 <div className="rounded-lg bg-muted/50 p-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{t("res.dailyRate")}</span>
-                    <span>&euro;{selectedReservation.dailyRate}</span>
+                    <span>{formatMoneyCompact(selectedReservation.dailyRate, currency)}</span>
                   </div>
                   <div className="flex justify-between text-sm font-bold mt-1">
                     <span>{t("common.total")}</span>
-                    <span className="text-primary">&euro;{selectedReservation.totalCost}</span>
+                    <span className="text-primary">{formatMoney(selectedReservation.totalCost, currency)}</span>
                   </div>
                 </div>
 
@@ -2046,12 +2055,12 @@ export default function ReservationsPage() {
                       <div className="space-y-1 text-xs text-muted-foreground">
                         <div className="flex justify-between gap-3">
                           <span>{t("res.paidAmount")}</span>
-                          <span className="font-medium text-foreground">&euro;{getReservationPaidAmount(selectedReservation)}</span>
+                          <span className="font-medium text-foreground">{formatMoney(getReservationPaidAmount(selectedReservation), currency)}</span>
                         </div>
                         <div className="flex justify-between gap-3">
                           <span>{t("res.outstandingAmount")}</span>
                           <span className={`font-medium ${getReservationOutstandingAmount(selectedReservation) > 0 ? "text-amber-700" : "text-foreground"}`}>
-                            &euro;{getReservationOutstandingAmount(selectedReservation)}
+                            {formatMoney(getReservationOutstandingAmount(selectedReservation), currency)}
                           </span>
                         </div>
                       </div>
@@ -2061,7 +2070,7 @@ export default function ReservationsPage() {
                             <span>
                               {t("res.paymentMethodCash")} · {formatDate(payment.paidAt.slice(0, 10))}
                             </span>
-                            <span className="font-medium text-foreground">&euro;{payment.amount}</span>
+                            <span className="font-medium text-foreground">{formatMoney(payment.amount, currency)}</span>
                           </div>
                         ))}
                       </div>
@@ -2073,7 +2082,7 @@ export default function ReservationsPage() {
                       </Badge>
                       <div className="flex justify-between gap-3 text-xs text-muted-foreground">
                         <span>{t("res.outstandingAmount")}</span>
-                        <span className="font-medium text-foreground">&euro;{selectedReservation.totalCost}</span>
+                        <span className="font-medium text-foreground">{formatMoney(selectedReservation.totalCost, currency)}</span>
                       </div>
                     </div>
                   )}
@@ -2397,11 +2406,11 @@ export default function ReservationsPage() {
                   <div className="rounded-lg bg-muted/50 p-3 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("res.extensionAdditionalCost")}</span>
-                      <span className="font-bold text-primary">+€{extraCost}</span>
+                      <span className="font-bold text-primary">+{formatMoney(extraCost, currency)}</span>
                     </div>
                     <div className="flex justify-between mt-1">
                       <span className="text-muted-foreground">{t("common.total")}</span>
-                      <span className="font-bold">€{selectedReservation.totalCost + extraCost}</span>
+                      <span className="font-bold">{formatMoney(selectedReservation.totalCost + extraCost, currency)}</span>
                     </div>
                   </div>
                 ) : null;
@@ -2541,7 +2550,7 @@ export default function ReservationsPage() {
                                 {hasConflict && <span className="text-destructive ml-1">· {t("booking.vehicleUnavailableForPeriod")}</span>}
                               </p>
                             </div>
-                            <p className="text-sm font-bold text-primary shrink-0">&euro;{v.dailyRate}{t("common.perDay")}</p>
+                            <p className="text-sm font-bold text-primary shrink-0">{vehiclePriceDisplay(v, currency)}{t("common.perDay")}</p>
                           </button>
                         );
                       })}

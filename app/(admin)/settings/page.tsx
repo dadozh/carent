@@ -5,6 +5,10 @@ export default async function TenantSettingsPage() {
   const settings = await getTenantSettingsForPage();
 
   return (
-    <TenantSettingsPageClient initialLocations={settings.locations} initialExtras={settings.extras} />
+    <TenantSettingsPageClient
+      initialLocations={settings.locations}
+      initialExtras={settings.extras}
+      initialCurrency={settings.currency}
+    />
   );
 }

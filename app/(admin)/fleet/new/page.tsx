@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { VehicleForm, type VehicleFormData } from "@/components/fleet/vehicle-form";
 import { uploadFiles } from "@/lib/storage";
 import { useVehicles } from "@/lib/use-vehicles";
+import { usePricingTemplates } from "@/lib/use-pricing-templates";
 import type { VehicleCategory } from "@/lib/mock-data";
 
 export default function AddVehiclePage() {
   const router = useRouter();
   const { addVehicle } = useVehicles();
+  const { templates } = usePricingTemplates();
 
   async function handleSave(
     data: VehicleFormData,
@@ -27,8 +29,11 @@ export default function AddVehiclePage() {
       plate: data.plate,
       vin: data.vin || undefined,
       color: data.color,
-      mileage: Number(data.mileage) || 0,
+      mileage: Number(data.mileage),
       dailyRate: Number(data.dailyRate),
+      pricingTemplateId: data.pricingMode === "template" ? data.pricingTemplateId || null : null,
+      pricingTiers: [],
+      customTiers: data.pricingMode === "custom" ? data.customTiers : [],
       status: data.status,
       location: data.location,
       fuelType: data.fuelType,
@@ -46,6 +51,7 @@ export default function AddVehiclePage() {
 
   return (
     <VehicleForm
+      pricingTemplates={templates}
       onSave={handleSave}
       onBack={() => router.back()}
     />

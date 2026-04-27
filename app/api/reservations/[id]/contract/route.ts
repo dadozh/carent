@@ -2,6 +2,7 @@ import { generateReservationContractPdf, getReservationContractNumber } from "@/
 import type { Locale } from "@/lib/i18n";
 import { getCustomerById, getReservationById } from "@/lib/rental-db";
 import { getVehicleById } from "@/lib/vehicle-db";
+import { getTenantSettings } from "@/lib/auth-db";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 
@@ -22,15 +23,16 @@ export async function GET(
 
     if (!reservation) return Response.json({ error: "Reservation not found" }, { status: 404 });
 
-    const [customer, vehicle] = await Promise.all([
+    const [customer, vehicle, { currency }] = await Promise.all([
       getCustomerById(reservation.customerId, tenantId),
       getVehicleById(reservation.vehicleId, tenantId),
+      getTenantSettings(tenantId),
     ]);
 
     if (!customer) return Response.json({ error: "Reservation customer not found" }, { status: 404 });
     if (!vehicle) return Response.json({ error: "Reservation vehicle not found" }, { status: 404 });
 
-    const pdf = await generateReservationContractPdf({ reservation, customer, vehicle, locale });
+    const pdf = await generateReservationContractPdf({ reservation, customer, vehicle, locale, currency });
     const pdfBody = pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer;
     const contractNumber = getReservationContractNumber(reservation.id);
 

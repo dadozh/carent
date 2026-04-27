@@ -1,4 +1,5 @@
-import { updateReservationImages, updateReservationStatus, swapReservationVehicle, extendReservation, completeReservationReturn, markReservationPaid } from "@/lib/rental-db";
+import { updateReservationImages, updateReservationStatus, swapReservationVehicle, extendReservation, completeReservationReturn, markReservationPaid, getReservationById } from "@/lib/rental-db";
+import { getReservationOutstandingAmount } from "@/lib/reservation-payments";
 import { getApiSession } from "@/lib/api-session";
 import { assertCan } from "@/lib/permissions";
 import { logAction } from "@/lib/audit-db";
@@ -80,12 +81,14 @@ export async function PATCH(
       });
     } else if (data.payment) {
       assertCan(role, "markAsPaid");
+      const prePaymentReservation = await getReservationById(id, tenantId);
+      const amountPaid = prePaymentReservation ? getReservationOutstandingAmount(prePaymentReservation) : 0;
       reservation = await markReservationPaid(id, data.payment, tenantId);
       action = "marked_paid";
       detail = buildReservationAuditDetail(reservation, {
         metadata: [
           { key: "paymentMethod", value: data.payment.method },
-          { key: "paidAmount", value: String(data.payment.amount ?? reservation.totalCost) },
+          { key: "paidAmount", value: String(amountPaid) },
         ],
       });
     } else if (data.status === "active") {

@@ -36,6 +36,8 @@ export interface Vehicle {
   color: string;
   mileage: number;
   dailyRate: number;
+  pricingTemplateId?: string | null;
+  pricingTiers?: { maxDays: number | null; dailyRate: number }[];
   status: VehicleStatus;
   location: string;
   fuelType: FuelType | string;

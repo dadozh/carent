@@ -8,12 +8,15 @@ import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { useVehicles } from "@/lib/use-vehicles";
 import { useReservations } from "@/lib/use-reservations";
+import { useCurrency } from "@/lib/tenant-context";
+import { formatMoney as fmt } from "@/lib/format-money";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 export default function DashboardPage() {
   const { t } = useI18n();
   const { vehicles } = useVehicles();
   const { reservations } = useReservations();
+  const currency = useCurrency();
   const [chartReady, setChartReady] = useState(false);
 
   useEffect(() => {
@@ -123,12 +126,12 @@ export default function DashboardPage() {
             <div className="mb-4 grid gap-2 sm:grid-cols-3">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">{t("dashboard.last12Months")}</p>
-                <p className="text-2xl font-bold">&euro;{formatMoney(totalRevenueLast12Months)}</p>
+                <p className="text-2xl font-bold">{fmt(totalRevenueLast12Months, currency)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">{t("dashboard.bestMonth")}</p>
                 <p className="text-2xl font-bold">{bestRevenueMonth?.label ?? "-"}</p>
-                <p className="text-xs text-muted-foreground">&euro;{formatMoney(bestRevenueMonth?.revenue ?? 0)}</p>
+                <p className="text-xs text-muted-foreground">{fmt(bestRevenueMonth?.revenue ?? 0, currency)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">{t("dashboard.reservations")}</p>
@@ -165,7 +168,7 @@ export default function DashboardPage() {
                           return [`${Number(value).toFixed(0)}%`, t("dashboard.fleetUtilization")];
                         }
 
-                        return [`€${formatMoney(Number(value))}`, t("dashboard.income")];
+                        return [fmt(Number(value), currency), t("dashboard.income")];
                       }}
                       labelFormatter={(label) => `${t("dashboard.month")}: ${label}`}
                     />
@@ -185,7 +188,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium">{month.label}</p>
                     <p className="text-xs text-muted-foreground">{month.reservations}</p>
                   </div>
-                  <p className="text-lg font-bold">&euro;{formatMoney(month.revenue)}</p>
+                  <p className="text-lg font-bold">{fmt(month.revenue, currency)}</p>
                   <p className="text-xs text-muted-foreground">
                     {month.utilization}% {t("dashboard.fleetUtilization").toLowerCase()}
                   </p>
@@ -244,7 +247,7 @@ export default function DashboardPage() {
                         {t(`res.status.${r.status}` as const)}
                       </span>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        &euro;{r.totalCost}
+                        {fmt(r.totalCost, currency)}
                       </p>
                     </div>
                   </div>
@@ -266,12 +269,6 @@ function formatOverdue(ms: number) {
   return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
-function formatMoney(value: number) {
-  return value.toLocaleString("de-DE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-}
 
 function formatMonthLabel(month: string) {
   const [, rawMonth] = month.split("-");

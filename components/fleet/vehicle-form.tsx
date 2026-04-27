@@ -14,7 +14,11 @@ import { Stepper } from "@/components/ui/stepper";
 import { cn } from "@/lib/utils";
 import { getMakes, getModels } from "@/lib/vehicle-data";
 import { useI18n } from "@/lib/i18n";
+import { useCurrency } from "@/lib/tenant-context";
+import { formatMoneyCompact } from "@/lib/format-money";
 import type { Vehicle, VehicleCategory, VehicleStatus } from "@/lib/mock-data";
+import type { PricingTier, PricingTemplate } from "@/lib/pricing";
+import { TierEditor } from "@/components/settings/tier-editor";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -42,6 +46,8 @@ export const YEARS = Array.from({ length: CURRENT_YEAR - 1989 }, (_, i) => ({
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
+export type PricingMode = "flat" | "template" | "custom";
+
 export interface VehicleFormData {
   vin: string;
   make: string;
@@ -59,9 +65,14 @@ export interface VehicleFormData {
   dailyRate: string;
   location: string;
   status: VehicleStatus;
+  pricingMode: PricingMode;
+  pricingTemplateId: string;
+  customTiers: PricingTier[];
 }
 
 export function vehicleToFormData(v: Vehicle): VehicleFormData {
+  const tiers = v.pricingTiers ?? [];
+  const pricingMode: PricingMode = v.pricingTemplateId ? "template" : tiers.length ? "custom" : "flat";
   return {
     vin: v.vin ?? "",
     make: v.make,
@@ -79,6 +90,9 @@ export function vehicleToFormData(v: Vehicle): VehicleFormData {
     dailyRate: String(v.dailyRate),
     location: v.location,
     status: v.status,
+    pricingMode,
+    pricingTemplateId: v.pricingTemplateId ?? "",
+    customTiers: tiers,
   };
 }
 
@@ -88,6 +102,7 @@ const EMPTY_FORM: VehicleFormData = {
   seats: 5, luggageCount: 2,
   color: "", plate: "", mileage: "0",
   dailyRate: "", location: "Airport", status: "available",
+  pricingMode: "flat", pricingTemplateId: "", customTiers: [],
 };
 
 // ─── Helper components ────────────────────────────────────────────────────────
@@ -122,6 +137,7 @@ export function FieldLabel({ label, required }: { label: string; required?: bool
 interface VehicleFormProps {
   /** If provided, form starts pre-filled (edit mode). If omitted, add mode. */
   vehicle?: Vehicle;
+  pricingTemplates?: PricingTemplate[];
   onSave: (
     data: VehicleFormData,
     /** Images kept from the original vehicle (not removed by user) */
@@ -134,8 +150,9 @@ interface VehicleFormProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function VehicleForm({ vehicle, onSave, onBack }: VehicleFormProps) {
+export function VehicleForm({ vehicle, pricingTemplates = [], onSave, onBack }: VehicleFormProps) {
   const { t } = useI18n();
+  const currency = useCurrency();
   const isEdit = !!vehicle;
 
   // Form state — pre-fill from vehicle in edit mode
@@ -254,6 +271,7 @@ export function VehicleForm({ vehicle, onSave, onBack }: VehicleFormProps) {
     if (!form.color) errs.color = t("vehicleForm.required");
     if (!form.plate.trim()) errs.plate = t("vehicleForm.required");
     if (!form.dailyRate || Number(form.dailyRate) <= 0) errs.dailyRate = t("vehicleForm.mustBePositive");
+    if (form.mileage === "" || !Number.isFinite(Number(form.mileage)) || Number(form.mileage) < 0) errs.mileage = t("vehicleForm.required");
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -433,15 +451,6 @@ export function VehicleForm({ vehicle, onSave, onBack }: VehicleFormProps) {
               {errors.plate && <p className="mt-1 text-xs text-destructive">{errors.plate}</p>}
             </div>
             <div>
-              <FieldLabel label={t("vehicleForm.dailyRate")} required />
-              <div className="relative">
-                <CircleDollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input type="number" min="0" step="0.01" value={form.dailyRate}
-                  onChange={(e) => set("dailyRate", e.target.value)} placeholder="0.00" className="h-10 pl-9" />
-              </div>
-              {errors.dailyRate && <p className="mt-1 text-xs text-destructive">{errors.dailyRate}</p>}
-            </div>
-            <div>
               <FieldLabel label={t("vehicleForm.currentMileage")} />
               <div className="relative">
                 <Gauge className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -472,6 +481,78 @@ export function VehicleForm({ vehicle, onSave, onBack }: VehicleFormProps) {
                 ))}
               </div>
             </div>
+          </div>
+        </FormSection>
+
+        {/* Pricing */}
+        <FormSection title="Pricing" icon={<CircleDollarSign className="h-4 w-4" />}>
+          {/* Mode selector */}
+          <div className="grid grid-cols-3 gap-2">
+            {(["flat", "template", "custom"] as PricingMode[]).map((mode) => (
+              <button key={mode} type="button" onClick={() => set("pricingMode", mode)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-sm font-medium transition-all capitalize",
+                  form.pricingMode === mode ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40 text-muted-foreground"
+                )}
+              >
+                {mode === "flat" ? "Flat rate" : mode === "template" ? "Template" : "Custom tiers"}
+              </button>
+            ))}
+          </div>
+
+          {form.pricingMode === "flat" && (
+            <p className="text-xs text-muted-foreground">Uses the daily rate below for all rental durations.</p>
+          )}
+
+          {form.pricingMode === "template" && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Pricing template</label>
+              {pricingTemplates.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No templates yet — create one in <a href="/settings/pricing" className="underline">Settings → Pricing</a>.</p>
+              ) : (
+                <SearchableSelect
+                  options={pricingTemplates.map((t) => ({ value: t.id, label: t.name }))}
+                  value={form.pricingTemplateId}
+                  onChange={(v) => set("pricingTemplateId", v)}
+                  placeholder="Select a template"
+                />
+              )}
+              {form.pricingTemplateId && (() => {
+                const tmpl = pricingTemplates.find((t) => t.id === form.pricingTemplateId);
+                if (!tmpl?.tiers.length) return null;
+                const sorted = [...tmpl.tiers].sort((a, b) => (a.maxDays ?? Infinity) - (b.maxDays ?? Infinity));
+                return (
+                  <div className="mt-2 space-y-0.5">
+                    {sorted.map((tier, i) => (
+                      <p key={i} className="text-xs text-muted-foreground">
+                        {tier.maxDays === null ? "Above all" : `Up to ${tier.maxDays} days`} → {formatMoneyCompact(tier.dailyRate, currency)}/day
+                      </p>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {form.pricingMode === "custom" && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Custom tiers for this vehicle</label>
+              <TierEditor tiers={form.customTiers} onChange={(tiers) => set("customTiers", tiers)} />
+            </div>
+          )}
+
+          {/* Base daily rate always visible */}
+          <div>
+            <FieldLabel label={t("vehicleForm.dailyRate")} required />
+            <p className="text-xs text-muted-foreground mb-1.5">
+              {form.pricingMode === "flat" ? "Charged for all durations." : "Used as fallback if no tier applies."}
+            </p>
+            <div className="relative">
+              <CircleDollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="number" min="0" step="0.01" value={form.dailyRate}
+                onChange={(e) => set("dailyRate", e.target.value)} placeholder="0.00" className="h-10 pl-9" />
+            </div>
+            {errors.dailyRate && <p className="mt-1 text-xs text-destructive">{errors.dailyRate}</p>}
           </div>
         </FormSection>
 

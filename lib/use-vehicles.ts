@@ -2,8 +2,10 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { type Vehicle } from "./mock-data";
+import type { PricingTier } from "./pricing";
 
-type VehicleInput = Omit<Vehicle, "id" | "maintenanceLog" | "rentalHistory">;
+type VehicleInput = Omit<Vehicle, "id" | "maintenanceLog" | "rentalHistory"> & { customTiers?: PricingTier[] };
+type VehicleUpdate = Partial<Vehicle> & { customTiers?: PricingTier[] };
 
 const VEHICLES_CHANGE_EVENT = "carent-vehicles-change";
 const EMPTY_VEHICLES: Vehicle[] = [];
@@ -74,7 +76,7 @@ async function createVehicle(input: VehicleInput): Promise<Vehicle> {
   return data.vehicle;
 }
 
-async function patchVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle> {
+async function patchVehicle(id: string, updates: VehicleUpdate): Promise<Vehicle> {
   const response = await fetch(`/api/vehicles/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -104,7 +106,7 @@ export function useVehicles() {
   );
 
   const updateVehicle = useCallback(
-    (id: string, updates: Partial<Vehicle>) => patchVehicle(id, updates),
+    (id: string, updates: VehicleUpdate) => patchVehicle(id, updates),
     []
   );
 

@@ -9,6 +9,7 @@ interface ContractPdfInput {
   customer: Customer;
   vehicle: Vehicle;
   locale: Locale;
+  currency: string;
 }
 
 type ContractLabelSet = {
@@ -237,8 +238,8 @@ function translate(locale: Locale, table: Record<Locale, Record<string, string>>
   return table[locale][value] ?? value;
 }
 
-function formatMoney(value: number) {
-  return `EUR ${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatMoney(value: number, currency: string) {
+  return `${currency} ${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function getReservationContractNumber(id: string) {
@@ -370,6 +371,7 @@ export async function generateReservationContractPdf({
   customer,
   vehicle,
   locale,
+  currency,
 }: ContractPdfInput) {
   const t = labels[locale];
   const rentalPeriod = formatDateTimeRange(
@@ -440,8 +442,8 @@ export async function generateReservationContractPdf({
         [t.rentalPeriod, rentalPeriod],
         [t.pickupLocation, translate(locale, locationLabels, reservation.pickupLocation)],
         [t.returnLocation, translate(locale, locationLabels, reservation.returnLocation)],
-        [t.dailyRate, formatMoney(reservation.dailyRate)],
-        [t.total, formatMoney(reservation.totalCost)],
+        [t.dailyRate, formatMoney(reservation.dailyRate, currency)],
+        [t.total, formatMoney(reservation.totalCost, currency)],
         [
           t.extras,
           reservation.extras.length

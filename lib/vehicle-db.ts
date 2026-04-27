@@ -2,9 +2,13 @@ import { randomUUID } from "node:crypto";
 import { and, count as sqlCount, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { vehicleImages, vehicleMaintenanceLogs, vehicles } from "@/lib/db/schema";
+import { getEffectiveTiers, setVehiclePricingTiers } from "@/lib/pricing-db";
+import type { PricingTier } from "@/lib/pricing";
 import type { Vehicle } from "@/lib/mock-data";
 
-type VehicleInput = Omit<Vehicle, "id" | "maintenanceLog" | "rentalHistory">;
+type VehicleInput = Omit<Vehicle, "id" | "maintenanceLog" | "rentalHistory"> & {
+  customTiers?: PricingTier[];
+};
 
 function toNum(v: string | number | null | undefined): number {
   return parseFloat(String(v ?? "0")) || 0;
@@ -13,9 +17,10 @@ function toNum(v: string | number | null | undefined): number {
 async function assembleVehicle(
   row: typeof vehicles.$inferSelect
 ): Promise<Vehicle> {
-  const [imgRows, logRows] = await Promise.all([
+  const [imgRows, logRows, pricingTiers] = await Promise.all([
     db.select().from(vehicleImages).where(eq(vehicleImages.vehicleId, row.id)).orderBy(vehicleImages.position),
     db.select().from(vehicleMaintenanceLogs).where(eq(vehicleMaintenanceLogs.vehicleId, row.id)).orderBy(sql`${vehicleMaintenanceLogs.createdAt} DESC`),
+    getEffectiveTiers(row.id, row.pricingTemplateId),
   ]);
   const images = imgRows.map((i) => i.url);
   return {
@@ -30,6 +35,8 @@ async function assembleVehicle(
     color: row.color,
     mileage: row.mileage,
     dailyRate: toNum(row.dailyRate),
+    pricingTemplateId: row.pricingTemplateId ?? null,
+    pricingTiers,
     status: row.status as Vehicle["status"],
     location: row.location,
     fuelType: row.fuelType,
@@ -73,11 +80,15 @@ export async function createVehicle(input: VehicleInput, tenantId: string): Prom
     year: input.year, category: input.category, plate: input.plate,
     vin: input.vin ?? null, color: input.color, mileage: input.mileage,
     dailyRate: String(input.dailyRate), status: input.status,
+    pricingTemplateId: input.pricingTemplateId ?? null,
     location: input.location, fuelType: input.fuelType, transmission: input.transmission,
     seats: input.seats, luggageCount: input.luggageCount,
     image: input.image || "", lastService: input.lastService, nextService: input.nextService,
     archivedAt,
   });
+  if (!input.pricingTemplateId && input.customTiers) {
+    await setVehiclePricingTiers(id, tenantId, input.customTiers);
+  }
 
   const imgs = [input.image, ...input.images].filter((u) => u?.trim());
   const seen = new Set<string>();
@@ -91,7 +102,9 @@ export async function createVehicle(input: VehicleInput, tenantId: string): Prom
   return (await getVehicleById(id, tenantId))!;
 }
 
-export async function updateVehicle(id: string, updates: Partial<Vehicle>, tenantId: string): Promise<Vehicle | null> {
+type VehicleUpdate = Partial<Vehicle> & { customTiers?: PricingTier[] };
+
+export async function updateVehicle(id: string, updates: VehicleUpdate, tenantId: string): Promise<Vehicle | null> {
   const existing = await getVehicleById(id, tenantId);
   if (!existing) return null;
 
@@ -106,12 +119,21 @@ export async function updateVehicle(id: string, updates: Partial<Vehicle>, tenan
     year: next.year, category: next.category, plate: next.plate,
     vin: next.vin ?? null, color: next.color, mileage: next.mileage,
     dailyRate: String(next.dailyRate), status: next.status,
+    pricingTemplateId: next.pricingTemplateId ?? null,
     location: next.location, fuelType: next.fuelType, transmission: next.transmission,
     seats: next.seats, luggageCount: next.luggageCount,
     image: next.image || "", lastService: next.lastService, nextService: next.nextService,
     ...(archivedAt !== undefined ? { archivedAt } : {}),
     updatedAt: new Date(),
   }).where(and(eq(vehicles.id, id), eq(vehicles.tenantId, tenantId)));
+
+  if (updates.customTiers !== undefined || updates.pricingTemplateId !== undefined) {
+    if (!next.pricingTemplateId && updates.customTiers) {
+      await setVehiclePricingTiers(id, tenantId, updates.customTiers);
+    } else if (!next.pricingTemplateId) {
+      await setVehiclePricingTiers(id, tenantId, []);
+    }
+  }
 
   if (updates.images !== undefined) {
     await db.delete(vehicleImages).where(eq(vehicleImages.vehicleId, id));

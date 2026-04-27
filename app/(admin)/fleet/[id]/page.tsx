@@ -16,6 +16,8 @@ import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useCan } from "@/lib/role-context";
+import { useCurrency } from "@/lib/tenant-context";
+import { formatMoney, formatMoneyCompact } from "@/lib/format-money";
 import { usePlanFeature } from "@/lib/plan-context";
 import { EuropeanDateInput } from "@/components/ui/european-date-input";
 import { formatDate, formatDateRange, isoDateToEuropeanInput, normalizeEuropeanDateInput, parseEuropeanDate } from "@/lib/date-format";
@@ -26,6 +28,7 @@ export default function VehicleDetailPage() {
   const { t } = useI18n();
   const { getVehicle, updateVehicle, isLoading } = useVehicles();
   const { reservations } = useReservations();
+  const currency = useCurrency();
   const canManageFleet = useCan("manageFleet");
   const hasAnalytics = usePlanFeature("analytics");
   const [showMaintenanceDialog, setShowMaintenanceDialog] = useState(false);
@@ -215,7 +218,7 @@ export default function VehicleDetailPage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-primary">&euro;{vehicle.dailyRate}</p>
+                  <p className="text-3xl font-bold text-primary">{formatMoneyCompact(vehicle.dailyRate, currency)}</p>
                   <p className="text-sm text-muted-foreground">{t("common.perDay")}</p>
                 </div>
               </div>
@@ -262,7 +265,7 @@ export default function VehicleDetailPage() {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-medium">&euro;{entry.cost}</p>
+                        <p className="text-sm font-medium">{formatMoneyCompact(entry.cost, currency)}</p>
                         <p className="text-xs text-muted-foreground">{formatDate(entry.date)}</p>
                       </div>
                     </div>
@@ -285,7 +288,7 @@ export default function VehicleDetailPage() {
             <CardContent className="space-y-3">
               <div className="rounded-lg bg-muted/50 p-3">
                 <p className="text-xs text-muted-foreground">{t("fleet.totalRevenue")}</p>
-                <p className="text-2xl font-bold text-primary">&euro;{totalRevenue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-primary">{formatMoney(totalRevenue, currency)}</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-muted/50 p-3">
@@ -294,7 +297,7 @@ export default function VehicleDetailPage() {
                 </div>
                 <div className="rounded-lg bg-muted/50 p-3">
                   <p className="text-xs text-muted-foreground">{t("fleet.avgPerRental")}</p>
-                  <p className="text-lg font-semibold">&euro;{avgPerRental}</p>
+                  <p className="text-lg font-semibold">{formatMoney(avgPerRental, currency)}</p>
                 </div>
               </div>
               {activeNow > 0 && (
@@ -329,7 +332,7 @@ export default function VehicleDetailPage() {
                       <p className="text-xs text-muted-foreground">
                         {formatDateRange(r.startDate, r.endDate)}
                       </p>
-                      <p className="text-sm font-medium text-primary mt-1">&euro;{r.totalCost}</p>
+                      <p className="text-sm font-medium text-primary mt-1">{formatMoney(r.totalCost, currency)}</p>
                     </div>
                   ))}
                 </div>

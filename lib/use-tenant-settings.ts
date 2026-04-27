@@ -6,6 +6,7 @@ import type { TenantSettings } from "@/lib/auth-db";
 const DEFAULT_SETTINGS: TenantSettings = {
   locations: ["Airport", "Downtown"],
   extras: ["GPS", "Wi-Fi", "Child Seat"],
+  currency: "EUR",
 };
 
 export function useTenantSettings() {

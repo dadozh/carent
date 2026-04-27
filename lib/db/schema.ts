@@ -26,6 +26,7 @@ export const tenantSettings = pgTable("tenant_settings", {
   tenantId:  text("tenant_id").primaryKey().references(() => tenants.id),
   locations: text("locations").array().notNull().default([]),
   extras:    text("extras").array().notNull().default([]),
+  currency:  text("currency").notNull().default("EUR"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -73,6 +74,36 @@ export const tenantFeatureOverrides = pgTable("tenant_feature_overrides", {
   primaryKey({ columns: [t.tenantId, t.feature] }),
 ]);
 
+// ─── Pricing ──────────────────────────────────────────────────────────────────
+
+export const pricingTemplates = pgTable("pricing_templates", {
+  id:        text("id").primaryKey(),
+  tenantId:  text("tenant_id").notNull().references(() => tenants.id),
+  name:      text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("pricing_templates_tenant_idx").on(t.tenantId),
+]);
+
+export const pricingTemplateTiers = pgTable("pricing_template_tiers", {
+  id:         text("id").primaryKey(),
+  templateId: text("template_id").notNull().references(() => pricingTemplates.id, { onDelete: "cascade" }),
+  maxDays:    integer("max_days"),
+  dailyRate:  numeric("daily_rate", { precision: 10, scale: 2 }).notNull(),
+  position:   integer("position").notNull().default(0),
+});
+
+export const vehiclePricingTiers = pgTable("vehicle_pricing_tiers", {
+  id:        text("id").primaryKey(),
+  vehicleId: text("vehicle_id").notNull(),
+  tenantId:  text("tenant_id").notNull(),
+  maxDays:   integer("max_days"),
+  dailyRate:  numeric("daily_rate", { precision: 10, scale: 2 }).notNull(),
+  position:  integer("position").notNull().default(0),
+}, (t) => [
+  index("vehicle_pricing_tiers_vehicle_idx").on(t.vehicleId),
+]);
+
 // ─── Vehicles ─────────────────────────────────────────────────────────────────
 
 export const vehicles = pgTable("vehicles", {
@@ -93,8 +124,9 @@ export const vehicles = pgTable("vehicles", {
   fuelType:     text("fuel_type").notNull(),
   transmission: text("transmission").notNull(),
   seats:        integer("seats").notNull().default(5),
-  luggageCount: integer("luggage_count").notNull().default(0),
-  image:        text("image").notNull().default(""),
+  luggageCount:      integer("luggage_count").notNull().default(0),
+  pricingTemplateId: text("pricing_template_id"),
+  image:             text("image").notNull().default(""),
   lastService:  text("last_service").notNull().default(""),
   nextService:  text("next_service").notNull().default(""),
   archivedAt:   timestamp("archived_at", { withTimezone: true }),
