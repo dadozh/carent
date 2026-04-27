@@ -30,5 +30,33 @@
       "tag": "0003_tenant_currency",
       "breakpoints": true
     }
+    ,{
+      "idx": 4,
+      "version": "7",
+      "when": 1745680000000,
+      "tag": "0004_tenant_languages",
+      "breakpoints": true
+    }
+    ,{
+      "idx": 5,
+      "version": "7",
+      "when": 1777250000000,
+      "tag": "0005_contract_templates",
+      "breakpoints": true
+    }
+    ,{
+      "idx": 6,
+      "version": "7",
+      "when": 1777260000000,
+      "tag": "0006_location_translations",
+      "breakpoints": true
+    }
+    ,{
+      "idx": 7,
+      "version": "7",
+      "when": 1777270000000,
+      "tag": "0007_extra_translations_prices",
+      "breakpoints": true
+    }
   ]
 }

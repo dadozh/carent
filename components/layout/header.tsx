@@ -2,7 +2,7 @@
 
 import { Bell, Globe, LogOut, User, Users, Building2 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useI18n } from "@/lib/i18n";
+import { LOCALE_LABELS, useI18n } from "@/lib/i18n";
 import Link from "next/link";
 
 interface HeaderProps {
@@ -13,7 +13,7 @@ interface HeaderProps {
 }
 
 export function Header({ userName, userEmail, userRole, isImpersonating = false }: HeaderProps) {
-  const { locale, setLocale, t } = useI18n();
+  const { locale, setLocale, uiLocales, t } = useI18n();
 
   const initials = userName
     .split(" ")
@@ -58,14 +58,27 @@ export function Header({ userName, userEmail, userRole, isImpersonating = false 
           <span className="hidden sm:inline">Profile</span>
         </Link>
 
-        <button
-          onClick={() => setLocale(locale === "en" ? "sr" : "en")}
-          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-          title={t("common.language")}
-        >
-          <Globe className="h-3.5 w-3.5" />
-          {locale === "en" ? "EN" : "SR"}
-        </button>
+        {uiLocales.length > 1 ? (
+          <label
+            className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+            title={t("common.language")}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            <span className="sr-only">{t("common.language")}</span>
+            <select
+              value={locale}
+              onChange={(event) => setLocale(event.target.value as typeof locale)}
+              aria-label={t("common.language")}
+              className="bg-transparent text-xs font-medium outline-none"
+            >
+              {uiLocales.map((uiLocale) => (
+                <option key={uiLocale} value={uiLocale}>
+                  {LOCALE_LABELS[uiLocale]}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <button className="relative rounded-md p-2 hover:bg-muted">
           <Bell className="h-5 w-5 text-muted-foreground" />

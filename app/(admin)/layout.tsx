@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
+import { TenantLocaleScope } from "@/components/layout/tenant-locale-scope";
 import { RoleProvider } from "@/lib/role-context";
 import { PlanProvider } from "@/lib/plan-context";
 import { TenantProvider } from "@/lib/tenant-context";
@@ -16,12 +17,13 @@ export default async function AdminLayout({
   const session = await verifySession();
   if (!session) redirect("/login");
 
-  const { currency } = await getTenantSettings(session.tenantId);
+  const { currency, uiLanguages, defaultUiLanguage } = await getTenantSettings(session.tenantId);
 
   return (
     <RoleProvider role={session.role}>
     <PlanProvider plan={session.plan ?? "starter"} featureOverrides={session.featureOverrides ?? {}}>
     <TenantProvider initialLogoUrl={session.logoUrl ?? null} initialCurrency={currency}>
+      <TenantLocaleScope uiLocales={uiLanguages} defaultUiLocale={defaultUiLanguage} />
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">

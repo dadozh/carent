@@ -12,6 +12,22 @@ import {
   tenantSettings,
   users,
 } from "@/lib/db/schema";
+import {
+  DEFAULT_UI_LOCALE,
+  DEFAULT_UI_LOCALES,
+  isLocale,
+  normalizeDefaultLocale,
+  normalizeLocaleSelection,
+  type Locale,
+} from "@/lib/i18n-config";
+import {
+  normalizeExtraEntries,
+  type ExtraEntry,
+} from "@/lib/extra";
+import {
+  normalizeLocationEntries,
+  type LocationEntry,
+} from "@/lib/location";
 import type { FeatureOverrides } from "@/lib/plan-features";
 
 export type UserRole = "super_admin" | "tenant_admin" | "manager" | "agent" | "viewer";
@@ -27,9 +43,13 @@ export interface Tenant {
 }
 
 export interface TenantSettings {
-  locations: string[];
-  extras: string[];
+  locations: LocationEntry[];
+  extras: ExtraEntry[];
   currency: string;
+  contractLanguages: Locale[];
+  uiLanguages: Locale[];
+  defaultContractLanguage: Locale;
+  defaultUiLanguage: Locale;
 }
 
 export interface TenantBillingSettings {
@@ -75,9 +95,20 @@ export const TENANT_USER_ROLES = [
 ] as const satisfies readonly UserRole[];
 
 export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
-  locations: ["Airport", "Downtown"],
-  extras: ["GPS", "Wi-Fi", "Child Seat"],
+  locations: [
+    { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+    { key: "Downtown", labels: { en: "Downtown", sr: "Centar grada" } },
+  ],
+  extras: [
+    { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 0 },
+    { key: "Wi-Fi", labels: { en: "Wi-Fi", sr: "Wi-Fi" }, price: 0 },
+    { key: "Child Seat", labels: { en: "Child Seat", sr: "Dečje sedište" }, price: 0 },
+  ],
   currency: "EUR",
+  contractLanguages: [...DEFAULT_UI_LOCALES],
+  uiLanguages: [...DEFAULT_UI_LOCALES],
+  defaultContractLanguage: DEFAULT_UI_LOCALE,
+  defaultUiLanguage: DEFAULT_UI_LOCALE,
 };
 
 export const DEFAULT_TENANT_BILLING_SETTINGS: TenantBillingSettings = {
@@ -115,8 +146,33 @@ function isValidTenantUserRole(role: UserRole): boolean {
   return TENANT_USER_ROLES.includes(role as (typeof TENANT_USER_ROLES)[number]);
 }
 
-function uniqueNonEmpty(values: string[]): string[] {
-  return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
+function normalizeLanguageList(values: readonly string[], label: string): Locale[] {
+  const languages = [...new Set(values.map((v) => v.trim()).filter(Boolean))];
+  if (!languages.length) throw new Error(`At least one ${label} language is required`);
+
+  const invalid = languages.find((language) => !isLocale(language));
+  if (invalid) throw new Error(`Unsupported ${label} language: ${invalid}`);
+
+  return languages as Locale[];
+}
+
+function normalizeTenantLanguageSettings(settings: TenantSettings): Pick<TenantSettings, "contractLanguages" | "uiLanguages" | "defaultContractLanguage" | "defaultUiLanguage"> {
+  const contractLanguages = normalizeLanguageList(settings.contractLanguages, "contract");
+  const uiLanguages = normalizeLanguageList(settings.uiLanguages, "UI");
+
+  if (!contractLanguages.includes(settings.defaultContractLanguage)) {
+    throw new Error("Default contract language must be selected");
+  }
+  if (!uiLanguages.includes(settings.defaultUiLanguage)) {
+    throw new Error("Default UI language must be selected");
+  }
+
+  return {
+    contractLanguages,
+    uiLanguages,
+    defaultContractLanguage: settings.defaultContractLanguage,
+    defaultUiLanguage: settings.defaultUiLanguage,
+  };
 }
 
 function roundMoney(value: number): number {
@@ -358,22 +414,29 @@ export async function updateTenantPlan(id: string, plan: string): Promise<Tenant
 export async function getTenantSettings(tenantId: string): Promise<TenantSettings> {
   const [row] = await db.select().from(tenantSettings).where(eq(tenantSettings.tenantId, tenantId)).limit(1);
   if (!row) return DEFAULT_TENANT_SETTINGS;
-  const locations = uniqueNonEmpty(row.locations ?? []);
-  const extras = uniqueNonEmpty(row.extras ?? []);
+  const locations = normalizeLocationEntries(row.locations);
+  const extras = normalizeExtraEntries(row.extras);
+  const contractLanguages = normalizeLocaleSelection(row.contractLanguages ?? [], DEFAULT_TENANT_SETTINGS.contractLanguages);
+  const uiLanguages = normalizeLocaleSelection(row.uiLanguages ?? [], DEFAULT_TENANT_SETTINGS.uiLanguages);
   return {
     locations: locations.length ? locations : DEFAULT_TENANT_SETTINGS.locations,
     extras: extras.length ? extras : DEFAULT_TENANT_SETTINGS.extras,
     currency: row.currency || DEFAULT_TENANT_SETTINGS.currency,
+    contractLanguages,
+    uiLanguages,
+    defaultContractLanguage: normalizeDefaultLocale(row.defaultContractLanguage, contractLanguages, DEFAULT_TENANT_SETTINGS.defaultContractLanguage),
+    defaultUiLanguage: normalizeDefaultLocale(row.defaultUiLanguage, uiLanguages, DEFAULT_TENANT_SETTINGS.defaultUiLanguage),
   };
 }
 
 export async function updateTenantSettings(tenantId: string, settings: TenantSettings): Promise<Tenant> {
-  const locations = uniqueNonEmpty(settings.locations);
-  const extras = uniqueNonEmpty(settings.extras);
+  const locations = normalizeLocationEntries(settings.locations);
+  const extras = normalizeExtraEntries(settings.extras);
   const currency = settings.currency || DEFAULT_TENANT_SETTINGS.currency;
+  const languageSettings = normalizeTenantLanguageSettings(settings);
   if (!locations.length) throw new Error("At least one location is required");
-  await db.insert(tenantSettings).values({ tenantId, locations, extras, currency })
-    .onConflictDoUpdate({ target: tenantSettings.tenantId, set: { locations, extras, currency, updatedAt: sql`NOW()` } });
+  await db.insert(tenantSettings).values({ tenantId, locations, extras, currency, ...languageSettings })
+    .onConflictDoUpdate({ target: tenantSettings.tenantId, set: { locations, extras, currency, ...languageSettings, updatedAt: sql`NOW()` } });
   return (await getTenantByIdIncludingInactive(tenantId))!;
 }
 

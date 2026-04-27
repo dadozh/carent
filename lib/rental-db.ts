@@ -15,6 +15,8 @@ import {
 } from "@/lib/db/schema";
 import type { Customer, CustomerUpdateInput, FuelLevel, Reservation, SwapReasonType, Vehicle } from "@/lib/mock-data";
 import { getTenantSettings } from "@/lib/auth-db";
+import { calculateExtraTotal, hasExtraKey } from "@/lib/extra";
+import { hasLocationKey } from "@/lib/location";
 import { appendVehicleMaintenanceLog, getVehicleById, updateVehicle } from "@/lib/vehicle-db";
 import { RESERVATION_BLOCKING_STATUSES, VEHICLE_TURNAROUND_MS, reservationBlocksPeriod } from "@/lib/reservation-rules";
 import { calculateCost, resolveTier } from "@/lib/pricing";
@@ -203,14 +205,14 @@ function validateCustomer(input: CustomerInput) {
 
 async function validateReservationExtras(extras: string[], tenantId: string) {
   const settings = await getTenantSettings(tenantId);
-  const invalid = extras.filter((e) => !settings.extras.includes(e));
+  const invalid = extras.filter((e) => !hasExtraKey(settings.extras, e));
   if (invalid.length) throw new Error(`Invalid extras: ${invalid.join(", ")}`);
 }
 
 async function validateReservationLocations(pickupLocation: string, returnLocation: string, tenantId: string) {
   const settings = await getTenantSettings(tenantId);
-  if (pickupLocation && !settings.locations.includes(pickupLocation)) throw new Error(`Invalid pickup location: ${pickupLocation}`);
-  if (returnLocation && !settings.locations.includes(returnLocation)) throw new Error(`Invalid return location: ${returnLocation}`);
+  if (pickupLocation && !hasLocationKey(settings.locations, pickupLocation)) throw new Error(`Invalid pickup location: ${pickupLocation}`);
+  if (returnLocation && !hasLocationKey(settings.locations, returnLocation)) throw new Error(`Invalid return location: ${returnLocation}`);
 }
 
 async function validateVehicleReservationConflict(
@@ -370,13 +372,15 @@ export async function createReservation(input: ReservationInput, tenantId: strin
     await validateReservationLocations(input.pickupLocation, input.returnLocation, tenantId);
   }
 
+  const settings = await getTenantSettings(tenantId);
   const days = rentalDays(input.startDate, input.endDate);
   const tiers = await getEffectiveTiers(vehicle.id, vehicle.pricingTemplateId);
   const tierRate = resolveTier(tiers, days)?.dailyRate ?? vehicle.dailyRate;
   const dailyRate = input.dailyRate ?? tierRate;
-  const totalCost = input.dailyRate != null
+  const baseCost = input.dailyRate != null
     ? Math.round(input.dailyRate * days * 100) / 100
     : calculateCost(days, tiers, vehicle.dailyRate);
+  const totalCost = Math.round((baseCost + calculateExtraTotal(input.extras ?? [], settings.extras, days)) * 100) / 100;
   await validateVehicleReservationConflict(input.vehicleId, input.startDate, input.endDate, input.pickupTime, input.returnTime, tenantId);
 
   const reservation = await db.transaction(async (tx) => {
@@ -442,11 +446,18 @@ export async function createPublicReservation(input: PublicBookingInput, tenantI
 
   if (!customer) throw new Error("Could not resolve customer");
   if (customer.blacklisted) throw new Error("Customer is blacklisted");
+  if (input.extras?.length) await validateReservationExtras(input.extras, tenantId);
+  if (input.pickupLocation || input.returnLocation) {
+    await validateReservationLocations(input.pickupLocation, input.returnLocation, tenantId);
+  }
 
+  const settings = await getTenantSettings(tenantId);
   const days = rentalDays(input.startDate, input.endDate);
   const tiers = await getEffectiveTiers(vehicle.id, vehicle.pricingTemplateId);
   const dailyRate = resolveTier(tiers, days)?.dailyRate ?? vehicle.dailyRate;
-  const totalCost = calculateCost(days, tiers, vehicle.dailyRate);
+  const totalCost = Math.round(
+    (calculateCost(days, tiers, vehicle.dailyRate) + calculateExtraTotal(input.extras ?? [], settings.extras, days)) * 100
+  ) / 100;
 
   return db.transaction(async (tx) => {
     const id = await getNextReservationId(tenantId, tx);
@@ -522,9 +533,13 @@ export async function extendReservation(id: string, input: ExtendReservationInpu
     reservation.vehicleId, reservation.startDate, input.newEndDate, reservation.pickupTime, input.newReturnTime, tenantId, id
   );
 
+  const settings = await getTenantSettings(tenantId);
   const oldDays = Math.max(1, Math.ceil((new Date(reservation.endDate).getTime() - new Date(reservation.startDate).getTime()) / 86400000));
   const newDays = Math.max(1, Math.ceil((new Date(input.newEndDate).getTime() - new Date(reservation.startDate).getTime()) / 86400000));
-  const additionalCost = Math.max(0, Math.round((newDays - oldDays) * reservation.dailyRate * 100) / 100);
+  const addedDays = newDays - oldDays;
+  const additionalVehicleCost = Math.round(addedDays * reservation.dailyRate * 100) / 100;
+  const additionalExtrasCost = calculateExtraTotal(reservation.extras, settings.extras, addedDays);
+  const additionalCost = Math.max(0, Math.round((additionalVehicleCost + additionalExtrasCost) * 100) / 100);
   const newTotalCost = Math.round((reservation.totalCost + additionalCost) * 100) / 100;
 
   await db.transaction(async (tx) => {

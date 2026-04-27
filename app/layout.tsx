@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import "./globals.css";
-import { I18nProvider, LOCALE_COOKIE_KEY, type Locale } from "@/lib/i18n";
+import { I18nProvider } from "@/lib/i18n";
+import { LOCALE_COOKIE_KEY, getInitialLocale } from "@/lib/i18n-config";
 
 const plusJakarta = localFont({
   variable: "--font-geist-sans",
@@ -28,10 +29,6 @@ export const metadata: Metadata = {
   title: "CARENT - Fleet & Rental Management",
   description: "Rent-a-car management platform",
 };
-
-function getInitialLocale(cookieValue: string | undefined): Locale {
-  return cookieValue === "sr" ? "sr" : "en";
-}
 
 export default async function RootLayout({
   children,

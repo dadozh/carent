@@ -141,9 +141,20 @@ describeIfDb("auth-db — tenant user management", () => {
     const tenant = await createTenant("Tenant A", testSlug("h1"));
 
     expect(await getTenantSettings(tenant.id)).toEqual({
-      locations: ["Airport", "Downtown"],
-      extras: ["GPS", "Wi-Fi", "Child Seat"],
+      locations: [
+        { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+        { key: "Downtown", labels: { en: "Downtown", sr: "Centar grada" } },
+      ],
+      extras: [
+        { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 0 },
+        { key: "Wi-Fi", labels: { en: "Wi-Fi", sr: "Wi-Fi" }, price: 0 },
+        { key: "Child Seat", labels: { en: "Child Seat", sr: "Dečje sedište" }, price: 0 },
+      ],
       currency: "EUR",
+      contractLanguages: ["en", "sr"],
+      uiLanguages: ["en", "sr"],
+      defaultContractLanguage: "en",
+      defaultUiLanguage: "en",
     });
   });
 
@@ -152,15 +163,38 @@ describeIfDb("auth-db — tenant user management", () => {
     const tenant = await createTenant("Tenant A", testSlug("i1"));
 
     await updateTenantSettings(tenant.id, {
-      locations: ["Airport", " Downtown ", "Airport", ""],
-      extras: ["GPS", "Baby Seat", "GPS"],
+      locations: [
+        { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+        { key: "downtown", labels: { en: " Downtown ", sr: "Centar" } },
+        { key: "Airport", labels: { en: "Airport duplicate" } },
+        { key: "", labels: { en: "" } },
+      ],
+      extras: [
+        { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 5 },
+        { key: "baby-seat", labels: { en: "Baby Seat", sr: "Sedište" }, price: 12.5 },
+        { key: "GPS", labels: { en: "Duplicate GPS" }, price: 99 },
+      ],
       currency: "EUR",
+      contractLanguages: ["de", "en"],
+      uiLanguages: ["en", "sr", "bs"],
+      defaultContractLanguage: "de",
+      defaultUiLanguage: "sr",
     });
 
     expect(await getTenantSettings(tenant.id)).toEqual({
-      locations: ["Airport", "Downtown"],
-      extras: ["GPS", "Baby Seat"],
+      locations: [
+        { key: "Airport", labels: { en: "Airport", sr: "Aerodrom" } },
+        { key: "downtown", labels: { en: "Downtown", sr: "Centar" } },
+      ],
+      extras: [
+        { key: "GPS", labels: { en: "GPS", sr: "GPS" }, price: 5 },
+        { key: "baby-seat", labels: { en: "Baby Seat", sr: "Sedište" }, price: 12.5 },
+      ],
       currency: "EUR",
+      contractLanguages: ["de", "en"],
+      uiLanguages: ["en", "sr", "bs"],
+      defaultContractLanguage: "de",
+      defaultUiLanguage: "sr",
     });
   });
 

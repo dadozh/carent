@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { AuditLogView } from "@/components/audit/audit-log-view";
 import { getTenantByIdIncludingInactive } from "@/lib/auth-db";
-import { LOCALE_COOKIE_KEY, type Locale } from "@/lib/i18n";
+import { LOCALE_COOKIE_KEY, type Locale } from "@/lib/i18n-config";
 import { verifySession } from "@/lib/session";
 
 export default async function TenantAuditPage({
